@@ -38,18 +38,12 @@ enum PanelTheme: String, CaseIterable {
 enum PanelBackdrop: String, CaseIterable {
     /// Standard system glass — follows the Liquid Glass setting in System Settings.
     case system
-    /// The most transparent glass.
-    case clear
-    /// Frosted and calm, closer to a regular window.
-    case frosted
     /// Glass tinted with soft light in the colors of what's playing.
     case mix
 
     var title: String {
         switch self {
         case .system: "Системная"
-        case .clear: "Прозрачная"
-        case .frosted: "Матовая"
         case .mix: "В цветах микса"
         }
     }

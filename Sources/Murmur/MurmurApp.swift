@@ -146,10 +146,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let panel = self.panel ?? makePanel()
         self.panel = panel
 
+        // The window is `margin` bigger than the glass on every side; place the glass, not the window.
         let size = panelSize
+        let m = GlassHost.margin
         let area = screen.visibleFrame
-        let x = min(max(anchorX - size.width / 2, area.minX + 8), area.maxX - size.width - 8)
-        panel.setFrame(NSRect(x: x, y: area.maxY - size.height - 6, width: size.width, height: size.height), display: true)
+        let x = min(max(anchorX - size.width / 2, area.minX + 8 - m), area.maxX - size.width + m - 8)
+        panel.setFrame(NSRect(x: x, y: area.maxY - size.height + m - 6, width: size.width, height: size.height), display: true)
         let button = statusItem?.button
 
         panel.alphaValue = 0
@@ -159,7 +161,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panel.animator().alphaValue = 1
         }
         button?.highlight(true)
-        panel.invalidateShadow()
 
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.closePanel() }
@@ -183,7 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func makePanel() -> GlassPanel {
         let panel = GlassPanel(contentRect: NSRect(x: 0, y: 0, width: 292, height: 600))
-        let content = GlassHost.make(ContentView().environmentObject(store), cornerRadius: GlassHost.panelRadius)
+        let content = GlassHost.makePanelContent(ContentView().environmentObject(store))
         panelSize = content.frame.size
         panel.contentView = content
         panel.onClose = { [weak self] in self?.closePanel() }
@@ -221,15 +222,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.titleVisibility = .hidden
             window.title = "О Murmur"
             window.isMovableByWindowBackground = true
-            window.isOpaque = false
-            window.backgroundColor = .clear
             window.isReleasedWhenClosed = false
-            let content = GlassHost.make(AboutView(), cornerRadius: 0)
-            let size = content.frame.size
-            window.contentView = content
-            window.setContentSize(size)
+            let hosting = NSHostingView(rootView: AboutView())
+            window.contentView = hosting
+            window.setContentSize(hosting.fittingSize)
             window.center()
-            glassViews.append(content)
             aboutWindow = window
             applyAppearance()
         }
@@ -248,17 +245,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.titleVisibility = .hidden
             window.title = "Murmur"
             window.isMovableByWindowBackground = true
-            window.isOpaque = false
-            window.backgroundColor = .clear
             window.isReleasedWhenClosed = false
             window.delegate = self
-            let content = GlassHost.make(ContentView(inWindow: true).environmentObject(store), cornerRadius: 0)
-            let size = content.frame.size
-            window.contentView = content
-            window.setContentSize(size)
+            let hosting = NSHostingView(rootView: ContentView(inWindow: true).environmentObject(store))
+            window.contentView = hosting
+            window.setContentSize(hosting.fittingSize)
             window.center()
             self.window = window
-            glassViews.append(content)
             applyAppearance()
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -310,13 +303,23 @@ final class GlassPanel: NSPanel {
         level = .statusBar
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        hasShadow = false   // the window is bigger than the glass; the glass draws its own shadow
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         animationBehavior = .none
     }
 
     override var canBecomeKey: Bool { true }
+
+    /// A click in the transparent margin around the glass counts as a click outside the panel.
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown || event.type == .rightMouseDown, let content = contentView,
+           !content.bounds.insetBy(dx: GlassHost.margin, dy: GlassHost.margin).contains(event.locationInWindow) {
+            onClose?()
+            return
+        }
+        super.sendEvent(event)
+    }
 
     override func cancelOperation(_ sender: Any?) { onClose?() }
 
@@ -330,57 +333,79 @@ final class GlassPanel: NSPanel {
 /// Liquid Glass look chosen in System Settings), a vibrant menu material before that.
 enum GlassHost {
     static let panelRadius: CGFloat = 22
+    /// Transparent room around the glass inside the panel window. Liquid Glass draws its rim light
+    /// and shadow slightly outside its shape; if the window ended right at the glass edge those
+    /// effects were cut off by the window rectangle and showed up as dark lines in the corners.
+    static let margin: CGFloat = 22
 
-    /// Backdrop styles: system glass, clear glass, frosted (window-like) or tinted by the mix.
+    /// Backdrop styles: plain system glass, or tinted by the mix.
     @MainActor
     static func style(_ view: NSView, backdrop: PanelBackdrop, mixTint: NSColor?) {
-        if #available(macOS 26.0, *), let glass = view as? NSGlassEffectView {
-            switch backdrop {
-            case .system:
-                glass.style = .regular
-                glass.tintColor = nil
-            case .clear:
-                glass.style = .clear
-                glass.tintColor = nil
-            case .frosted:
-                glass.style = .regular
-                glass.tintColor = NSColor.windowBackgroundColor.withAlphaComponent(0.8)
-            case .mix:
-                glass.style = .regular
-                glass.tintColor = mixTint?.withAlphaComponent(0.16)
-            }
-        } else if let effect = view as? NSVisualEffectView {
-            effect.material = switch backdrop {
-            case .system, .mix: .menu
-            case .clear: .popover
-            case .frosted: .windowBackground
-            }
+        if #available(macOS 26.0, *), let glass = view.subviews.compactMap({ $0 as? NSGlassEffectView }).first {
+            glass.style = .regular
+            glass.tintColor = backdrop == .mix ? mixTint?.withAlphaComponent(0.16) : nil
         }
     }
 
+    /// Panel content on real system glass: `NSGlassEffectView` on macOS 26+ (follows the Liquid
+    /// Glass look chosen in System Settings), a vibrant menu material before that. Returns a
+    /// transparent container `margin` larger than the content on every side.
     @MainActor
-    static func make<Content: View>(_ content: Content, cornerRadius: CGFloat) -> NSView {
+    static func makePanelContent<Content: View>(_ content: Content) -> NSView {
         let hosting = NSHostingView(rootView: content)
         hosting.sizingOptions = [.intrinsicContentSize]
         let size = hosting.fittingSize
+        let glassFrame = NSRect(x: margin, y: margin, width: size.width, height: size.height)
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: size.width + 2 * margin, height: size.height + 2 * margin))
+        container.wantsLayer = true
+        container.layer?.backgroundColor = .clear
+        container.addSubview(shadowView(for: glassFrame, bounds: container.bounds))
 
         if #available(macOS 26.0, *) {
-            let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: size))
-            glass.cornerRadius = cornerRadius
+            let glass = NSGlassEffectView(frame: glassFrame)
+            glass.cornerRadius = panelRadius
             glass.contentView = hosting
-            return glass
+            container.addSubview(glass)
+        } else {
+            let effect = NSVisualEffectView(frame: glassFrame)
+            effect.material = .menu
+            effect.blendingMode = .behindWindow
+            effect.state = .active
+            effect.wantsLayer = true
+            effect.layer?.cornerRadius = panelRadius
+            effect.layer?.cornerCurve = .continuous
+            effect.layer?.masksToBounds = true
+            hosting.frame = effect.bounds
+            hosting.autoresizingMask = [.width, .height]
+            effect.addSubview(hosting)
+            container.addSubview(effect)
         }
-        let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
-        effect.material = .menu
-        effect.blendingMode = .behindWindow
-        effect.state = .active
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = cornerRadius
-        effect.layer?.masksToBounds = true
-        hosting.frame = effect.bounds
-        hosting.autoresizingMask = [.width, .height]
-        effect.addSubview(hosting)
-        return effect
+        return container
+    }
+
+    /// A soft drop shadow that exists only outside the rounded glass (masked out underneath it,
+    /// so it never darkens the see-through glass).
+    @MainActor
+    private static func shadowView(for glassFrame: NSRect, bounds: NSRect) -> NSView {
+        let view = NSView(frame: bounds)
+        view.wantsLayer = true
+        guard let layer = view.layer else { return view }
+        let shape = CGPath(roundedRect: glassFrame, cornerWidth: panelRadius, cornerHeight: panelRadius, transform: nil)
+        layer.shadowPath = shape
+        layer.shadowColor = NSColor.black.cgColor
+        layer.shadowOpacity = 0.28
+        layer.shadowRadius = 12
+        layer.shadowOffset = CGSize(width: 0, height: -5)
+
+        let mask = CAShapeLayer()
+        let outside = CGMutablePath()
+        outside.addRect(bounds)
+        outside.addPath(shape)
+        mask.path = outside
+        mask.fillRule = .evenOdd
+        layer.mask = mask
+        return view
     }
 }
 

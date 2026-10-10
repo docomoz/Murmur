@@ -543,22 +543,16 @@ struct AboutView: View {
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
 
-            VStack(spacing: 4) {
-                Text("АВТОР")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(1)
-                    .foregroundStyle(.secondary)
-                Text("Maksim Berezkin")
-                    .font(.system(size: 15, weight: .semibold))
-                Link("github.com/docomoz/Murmur", destination: URL(string: "https://github.com/docomoz/Murmur")!)
-                    .font(.system(size: 12))
-            }
-            .padding(.top, 22)
+            Link("github.com/docomoz/Murmur", destination: URL(string: "https://github.com/docomoz/Murmur")!)
+                .font(.system(size: 12))
+                .focusable(false)
+                .padding(.top, 8)
 
             Text("Звуки природы для фокуса и сна\nпрямо в строке меню. ⌃⌥P — пауза\nиз любого приложения.")
                 .font(.system(size: 12))
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 20)
 
             Text("Записи — библиотека Moodist, лицензии Pixabay\nи CC0. Белый шум и сердцебиение\nсинтезируются в реальном времени.")
@@ -566,6 +560,7 @@ struct AboutView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 14)
 
             Text("© 2026 Maksim Berezkin")
