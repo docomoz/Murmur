@@ -112,8 +112,9 @@ extension Sound {
         Sound(id: "clock", name: "Часы", symbol: "clock", category: .rhythm, tint: Color(hex: 0xB89B62), source: .file("clock"),
               crossfade: 0.03, region: LoopRegion(start: 0.45, length: 15.005), defaultVolume: 0.4),
         Sound(id: "heartbeat", name: "Сердцебиение", symbol: "heart", category: .rhythm, tint: Color(hex: 0xEF4B6C), source: .heartbeat, defaultVolume: 0.5),
-        Sound(id: "cat", name: "Мурлыканье кота", symbol: "cat", category: .rhythm, tint: Color(hex: 0xE0915A), source: .file("cat"), defaultVolume: 0.5,
-              layers: [Layer(length: 3...7, fade: 1, rate: 0.98...1.02)]),
+        Sound(id: "cat", name: "Мурлыканье кота", symbol: "cat", category: .rhythm, tint: Color(hex: 0xE0915A), source: .file("cat"), defaultVolume: 0.4,
+                            // Slower and lower than the recording: a calm, deep purr instead of a busy one.
+              layers: [Layer(length: 6...12, fade: 1.5, rate: 0.86...0.92)]),
         Sound(id: "vinyl", name: "Виниловая пластинка", symbol: "opticaldisc", category: .rhythm, tint: Color(hex: 0xB0656E), source: .file("vinyl"), defaultVolume: 0.45,
               layers: [Layer(length: 4...9, fade: 1.5, rate: 0.99...1.01)]),
         Sound(id: "bowl", name: "Поющая чаша", symbol: "bell", category: .rhythm, tint: Color(hex: 0xD4A040), source: .file("bowl"), defaultVolume: 0.45,

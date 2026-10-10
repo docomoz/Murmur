@@ -129,7 +129,7 @@ private struct TopBar: View {
     var body: some View {
         GlassGroup(spacing: 16) {
             HStack {
-                GlassIconButton(symbol: "checklist", help: "Все миксы") { MenuBuilder.mixes(store) }
+                GlassIconButton(symbol: "checklist") { MenuBuilder.mixes(store) }
                 Spacer()
                 // Stop + Play sit close enough for their glass to melt into one block.
                 HStack(spacing: 3) {
@@ -137,7 +137,7 @@ private struct TopBar: View {
                     PlayButton()
                 }
                 Spacer()
-                GlassIconButton(symbol: "gearshape", help: "Настройки") { MenuBuilder.settings(store) }
+                GlassIconButton(symbol: "gearshape") { MenuBuilder.settings(store) }
             }
         }
     }
@@ -145,7 +145,6 @@ private struct TopBar: View {
 
 private struct GlassIconButton: View {
     let symbol: String
-    let help: String
     let menu: () -> NSMenu
 
     var body: some View {
@@ -153,15 +152,14 @@ private struct GlassIconButton: View {
             MenuBuilder.popUp(menu())
         } label: {
             Image(systemName: symbol)
-                .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(Theme.iconGradient)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.primary)
                 .frame(width: 36, height: 36)
                 .contentShape(Circle())
                 .liquidGlass(in: Circle(), interactive: true)
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help(help)
     }
 }
 
@@ -176,7 +174,7 @@ private struct StopButton: View {
             Image(systemName: "stop.fill")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.primary)
-                .opacity(enabled ? 0.85 : 0.3)
+                .opacity(enabled ? 1 : 0.35)
                 .frame(width: 38, height: 38)
                 .contentShape(Circle())
                 .liquidGlass(in: Circle(), interactive: enabled)
@@ -184,7 +182,6 @@ private struct StopButton: View {
         .buttonStyle(.plain)
         .focusable(false)
         .disabled(!enabled)
-        .help("Выключить все звуки")
     }
 }
 
@@ -207,7 +204,6 @@ private struct PlayButton: View {
         .buttonStyle(.plain)
         .focusable(false)
         .keyboardShortcut(.space, modifiers: [])
-        .help(store.isPlaying ? "Пауза — пробел или ⌃⌥P" : "Играть — пробел или ⌃⌥P")
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: store.isPlaying)
     }
 }
@@ -251,13 +247,12 @@ private struct PresetStrip: View {
                 ForEach(Self.popular, id: \.id) { item in
                     if let mix = Mix.presets.first(where: { $0.id == item.id }) {
                         PresetTile(emoji: mix.emoji, title: item.title,
-                                   selected: store.isPlaying && store.isCurrent(mix),
-                                   help: mix.name) {
+                                   selected: store.isPlaying && store.isCurrent(mix)) {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.apply(mix) }
                         }
                     }
                 }
-                PresetTile(emoji: "🎲", title: "Наугад", selected: false, help: "Случайный микс") {
+                PresetTile(emoji: "🎲", title: "Наугад", selected: false) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.randomMix() }
                 }
             }
@@ -269,7 +264,6 @@ private struct PresetTile: View {
     let emoji: String
     let title: String
     let selected: Bool
-    let help: String
     let action: () -> Void
 
     var body: some View {
@@ -278,7 +272,7 @@ private struct PresetTile: View {
                 Text(emoji).font(.system(size: 15))
                 Text(title)
                     .font(.system(size: 9.5, weight: .semibold))
-                    .foregroundStyle(selected ? Color.white : Theme.dimText)
+                    .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.85))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -290,7 +284,6 @@ private struct PresetTile: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
-        .help(help)
     }
 }
 
@@ -336,7 +329,6 @@ private struct SoundRow: View {
         }
         .onHover { hover = $0 }
         .animation(.easeOut(duration: 0.3), value: on)
-        .help(on ? "Нажмите, чтобы выключить" : "Нажмите, чтобы включить")
     }
 }
 
@@ -402,7 +394,6 @@ private struct FooterView: View {
             }
             .buttonStyle(.plain)
             .focusable(false)
-            .help("Плавно выключит звук через выбранное время")
 
             Spacer()
 

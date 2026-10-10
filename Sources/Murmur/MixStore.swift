@@ -11,8 +11,8 @@ struct Mix: Codable, Identifiable, Hashable {
     var builtIn = false
 
     static let presets: [Mix] = [
-        Mix(id: "b.cafe", name: "Дождливое кафе", emoji: "☕️", levels: ["rain": 0.55, "cafe": 0.5, "vinyl": 0.15], builtIn: true),
-        Mix(id: "b.focus", name: "Фокус", emoji: "🎧", levels: ["white": 0.3, "rain": 0.45, "keyboard": 0.15], builtIn: true),
+        Mix(id: "b.cafe", name: "Дождливое кафе", emoji: "☕️", levels: ["rain": 0.55, "cafe": 0.5, "city": 0.2, "vinyl": 0.15], builtIn: true),
+        Mix(id: "b.focus", name: "Фокус", emoji: "🎧", levels: ["rain": 0.5, "library": 0.35, "white": 0.2], builtIn: true),
         Mix(id: "b.fire", name: "У костра", emoji: "🔥", levels: ["campfire": 0.7, "crickets": 0.35, "wind": 0.2], builtIn: true),
         Mix(id: "b.sea", name: "Море", emoji: "🌊", levels: ["waves": 0.7, "wind": 0.2], builtIn: true),
         Mix(id: "b.storm", name: "Гроза", emoji: "⛈️", levels: ["storm": 0.6, "rain": 0.5, "wind": 0.25], builtIn: true),
@@ -51,15 +51,21 @@ enum PanelBackdrop: String, CaseIterable {
 
 /// Accent color of the controls: Play, sliders, selected preset, links.
 enum AccentChoice: String, CaseIterable {
-    case system, lavender, coral, amber, rose, graphite
+    case system, lavender, lilac, rose, raspberry, coral, tangerine, amber, sand, lime, emerald, graphite
 
     var title: String {
         switch self {
         case .system: "Как в системе"
         case .lavender: "Лаванда"
-        case .coral: "Коралл"
-        case .amber: "Янтарь"
+        case .lilac: "Сирень"
         case .rose: "Роза"
+        case .raspberry: "Малина"
+        case .coral: "Коралл"
+        case .tangerine: "Мандарин"
+        case .amber: "Янтарь"
+        case .sand: "Песок"
+        case .lime: "Лайм"
+        case .emerald: "Изумруд"
         case .graphite: "Графит"
         }
     }
@@ -74,9 +80,15 @@ enum AccentChoice: String, CaseIterable {
             let accent = NSColor.controlAccentColor
             return (accent, accent.blended(withFraction: 0.35, of: .white) ?? accent)
         case .lavender: return (hex(0x8B6CFF), hex(0xB49BFF))
-        case .coral: return (hex(0xFF6B5E), hex(0xFF9A76))
-        case .amber: return (hex(0xF59E0B), hex(0xFBBF57))
+        case .lilac: return (hex(0xB46CF0), hex(0xD9A6FF))
         case .rose: return (hex(0xF0508C), hex(0xFF85B3))
+        case .raspberry: return (hex(0xD61F5C), hex(0xF2507E))
+        case .coral: return (hex(0xFF6B5E), hex(0xFF9A76))
+        case .tangerine: return (hex(0xF97316), hex(0xFDA154))
+        case .amber: return (hex(0xF59E0B), hex(0xFBBF57))
+        case .sand: return (hex(0xB8935A), hex(0xD9BC8A))
+        case .lime: return (hex(0x65B320), hex(0x9AD94A))
+        case .emerald: return (hex(0x0E9F6E), hex(0x3CCB94))
         case .graphite: return (hex(0x5B6270), hex(0x8A93A3))
         }
     }
