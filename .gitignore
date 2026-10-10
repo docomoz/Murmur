@@ -1,0 +1,11 @@
+# Build output
+.build/
+build/
+*.dmg
+
+# macOS
+.DS_Store
+
+# Full-length render dumps from `--snapshot` (preview-top.png is kept for the README)
+preview-light.png
+preview-dark.png

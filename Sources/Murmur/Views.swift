@@ -1,0 +1,484 @@
+import AppKit
+import SwiftUI
+
+enum Theme {
+    static let tint1 = Color(hex: 0x49EEC8)
+    static let tint2 = Color(hex: 0x52D2F0)
+    static let gradient = LinearGradient(colors: [tint1, tint2], startPoint: .leading, endPoint: .trailing)
+    static let iconGradient = LinearGradient(colors: [tint1, tint2], startPoint: .top, endPoint: .bottom)
+    static let link = Color(light: 0x0FA58F, dark: 0x3DD9BE)
+
+    // Semantic, vibrancy-friendly colors: the panel itself is glass, so nothing here is opaque.
+    static let track = Color.primary.opacity(0.10)
+    static let fillOff = Color.primary.opacity(0.22)
+    static let thumbOff = Color.primary.opacity(0.32)
+    static let hover = Color.primary.opacity(0.06)
+}
+
+extension Color {
+    /// A color that follows the panel's light/dark appearance.
+    init(light: UInt32, dark: UInt32) {
+        self.init(nsColor: NSColor(name: nil) { appearance in
+            let hex = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(
+                srgbRed: CGFloat((hex >> 16) & 0xFF) / 255,
+                green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255,
+                alpha: 1)
+        })
+    }
+}
+
+// MARK: Liquid Glass
+
+extension View {
+    /// Liquid Glass on macOS 26+, a frosted material on older systems.
+    @ViewBuilder
+    func liquidGlass<S: Shape>(in shape: S, tint: Color? = nil, interactive: Bool = false) -> some View {
+        if #available(macOS 26.0, *), !SelfTest.isRendering {
+            self.glassEffect(interactive ? Glass.regular.tint(tint).interactive() : Glass.regular.tint(tint), in: shape)
+        } else {
+            self
+                .background(shape.fill(tint.map { AnyShapeStyle($0.opacity(0.55)) } ?? AnyShapeStyle(.thinMaterial)))
+                .overlay(shape.stroke(Color.white.opacity(0.18), lineWidth: 0.5))
+        }
+    }
+}
+
+/// Lets neighbouring glass shapes blend and morph into each other (macOS 26+).
+struct GlassGroup<Content: View>: View {
+    var spacing: CGFloat
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        if #available(macOS 26.0, *), !SelfTest.isRendering {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+    }
+}
+
+/// Window-mode backdrop (the menu bar panel brings its own glass).
+struct PanelBackdrop: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .behindWindow
+        view.state = .active
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
+}
+
+// MARK: Panel
+
+struct ContentView: View {
+    @EnvironmentObject private var store: MixStore
+    /// Shown as a standalone window (traffic lights at the top-left) instead of the menu bar panel.
+    var inWindow = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TopBar()
+                .padding(.top, inWindow ? 30 : 14)
+                .padding(.horizontal, 14)
+
+            PresetStrip()
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            Divider().opacity(0.5).padding(.horizontal, 14)
+
+            if SelfTest.isRendering {
+                list
+            } else {
+                ScrollView(showsIndicators: false) { list }
+                    .frame(height: 420)
+            }
+
+            Divider().opacity(0.5).padding(.horizontal, 14)
+
+            FooterView()
+        }
+        .frame(width: 292)
+        .background(inWindow ? AnyView(PanelBackdrop().ignoresSafeArea()) : AnyView(Color.clear))
+        .focusEffectDisabled()
+    }
+
+    private var list: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(Sound.all) { sound in
+                SoundRow(sound: sound)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+    }
+}
+
+// MARK: Top bar
+
+private struct TopBar: View {
+    @EnvironmentObject private var store: MixStore
+
+    var body: some View {
+        GlassGroup(spacing: 16) {
+            HStack {
+                GlassIconButton(symbol: "checklist", help: "Все миксы") { MenuBuilder.mixes(store) }
+                Spacer()
+                PlayButton()
+                Spacer()
+                GlassIconButton(symbol: "gearshape", help: "Настройки") { MenuBuilder.settings(store) }
+            }
+        }
+    }
+}
+
+private struct GlassIconButton: View {
+    let symbol: String
+    let help: String
+    let menu: () -> NSMenu
+
+    var body: some View {
+        Button {
+            MenuBuilder.popUp(menu())
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(Theme.iconGradient)
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+                .liquidGlass(in: Circle(), interactive: true)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(help)
+    }
+}
+
+private struct PlayButton: View {
+    @EnvironmentObject private var store: MixStore
+
+    var body: some View {
+        Button(action: store.togglePlay) {
+            Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
+                .font(.system(size: 19, weight: .semibold))
+                .foregroundStyle(.white)
+                .contentTransition(.symbolEffect(.replace))
+                .offset(x: store.isPlaying ? 0 : 1.5)
+                .frame(width: 50, height: 50)
+                .background(Circle().fill(Theme.iconGradient).opacity(0.9))
+                .contentShape(Circle())
+                .liquidGlass(in: Circle(), tint: Theme.tint1.opacity(0.35), interactive: true)
+                .shadow(color: Theme.tint1.opacity(store.isPlaying ? 0.45 : 0.2), radius: store.isPlaying ? 10 : 5)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .keyboardShortcut(.space, modifiers: [])
+        .help(store.isPlaying ? "Пауза — пробел или ⌃⌥P" : "Играть — пробел или ⌃⌥P")
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: store.isPlaying)
+    }
+}
+
+// MARK: Presets
+
+private struct PresetStrip: View {
+    @EnvironmentObject private var store: MixStore
+
+    /// The most loved mixes, one click away. The full list lives in the ☰ menu.
+    private static let popular: [(id: String, title: String)] = [
+        ("b.cafe", "Кафе"), ("b.focus", "Фокус"), ("b.fire", "Костёр"), ("b.sea", "Море"),
+    ]
+
+    var body: some View {
+        GlassGroup(spacing: 6) {
+            HStack(spacing: 6) {
+                ForEach(Self.popular, id: \.id) { item in
+                    if let mix = Mix.presets.first(where: { $0.id == item.id }) {
+                        PresetTile(emoji: mix.emoji, title: item.title,
+                                   selected: store.isPlaying && store.isCurrent(mix),
+                                   help: mix.name) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.apply(mix) }
+                        }
+                    }
+                }
+                PresetTile(emoji: "🎲", title: "Наугад", selected: false, help: "Случайный микс") {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.randomMix() }
+                }
+            }
+        }
+    }
+}
+
+private struct PresetTile: View {
+    let emoji: String
+    let title: String
+    let selected: Bool
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Text(emoji).font(.system(size: 15))
+                Text(title)
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .liquidGlass(in: RoundedRectangle(cornerRadius: 12, style: .continuous),
+                         tint: selected ? Theme.tint1.opacity(0.75) : nil, interactive: true)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help(help)
+    }
+}
+
+// MARK: Rows
+
+private struct SoundRow: View {
+    @EnvironmentObject private var store: MixStore
+    let sound: Sound
+    private let hoverState = State<Bool>(initialValue: false)
+    private var hover: Bool { get { hoverState.wrappedValue } nonmutating set { hoverState.wrappedValue = newValue } }
+
+    var body: some View {
+        let on = store.isActive(sound)
+
+        HStack(spacing: 12) {
+            Image(systemName: sound.symbol)
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(0.55)))
+                .symbolEffect(.pulse, options: .repeating, isActive: on && store.isPlaying && sound.category == .noise)
+                .frame(width: 26, height: 26)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(sound.name)
+                    .font(.system(size: 12.5, weight: on ? .semibold : .medium))
+                    .foregroundStyle(on ? Color.primary : Color.secondary)
+                    .lineLimit(1)
+                LineSlider(
+                    value: Binding(get: { store.volume(sound) }, set: { store.setVolume(sound, $0) }),
+                    on: on
+                )
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(hover ? Theme.hover : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeOut(duration: 0.25)) { store.toggle(sound) }
+        }
+        .onHover { hover = $0 }
+        .animation(.easeOut(duration: 0.3), value: on)
+        .help(on ? "Нажмите, чтобы выключить" : "Нажмите, чтобы включить")
+    }
+}
+
+/// Volume line: thin track, gradient fill, a slim vertical tick for the thumb.
+struct LineSlider: View {
+    @Binding var value: Double
+    var on: Bool
+    private let draggingState = State<Bool>(initialValue: false)
+    private var dragging: Bool { get { draggingState.wrappedValue } nonmutating set { draggingState.wrappedValue = newValue } }
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let x = CGFloat(value) * width
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Theme.track)
+                    .frame(height: 2.5)
+                Capsule()
+                    .fill(on ? AnyShapeStyle(Theme.gradient) : AnyShapeStyle(Theme.fillOff))
+                    .frame(width: max(x, 0), height: 2.5)
+                Capsule()
+                    .fill(on ? Theme.tint1 : Theme.thumbOff)
+                    .frame(width: 3, height: dragging ? 13 : 11)
+                    .offset(x: min(max(x - 1.5, 0), width - 3))
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { g in
+                        dragging = true
+                        value = Double(min(max(g.location.x / width, 0), 1))
+                    }
+                    .onEnded { _ in dragging = false }
+            )
+        }
+        .frame(height: 13)
+    }
+}
+
+// MARK: Footer
+
+private struct FooterView: View {
+    @EnvironmentObject private var store: MixStore
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button {
+                MenuBuilder.popUp(MenuBuilder.timer(store))
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "moon.zzz")
+                    Text(store.timerLabel ?? "Таймер сна")
+                        .monospacedDigit()
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.link)
+                .padding(.horizontal, 10)
+                .frame(height: 26)
+                .contentShape(Capsule())
+                .liquidGlass(in: Capsule(), interactive: true)
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+            .help("Плавно выключит звук через выбранное время")
+
+            Spacer()
+
+            Image(systemName: "speaker.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+            LineSlider(value: Binding(get: { store.master }, set: { store.setMaster($0) }), on: true)
+                .frame(width: 84)
+            Image(systemName: "speaker.wave.3.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: Menus
+
+/// Native AppKit menus: they look right in the menu bar panel and keep the custom icons intact.
+@MainActor
+enum MenuBuilder {
+    static func popUp(_ menu: NSMenu) {
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    static func mixes(_ store: MixStore) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(.sectionHeader(title: "Готовые миксы"))
+        for mix in Mix.presets {
+            menu.addItem(ActionMenuItem("\(mix.emoji)  \(mix.name)", checked: store.isPlaying && store.isCurrent(mix)) { store.apply(mix) })
+        }
+        if !store.userMixes.isEmpty {
+            menu.addItem(.separator())
+            menu.addItem(.sectionHeader(title: "Мои миксы"))
+            for mix in store.userMixes {
+                menu.addItem(ActionMenuItem("\(mix.emoji)  \(mix.name)", checked: store.isPlaying && store.isCurrent(mix)) { store.apply(mix) })
+            }
+        }
+        menu.addItem(.separator())
+        menu.addItem(ActionMenuItem("Сохранить текущий микс…", enabled: !store.active.isEmpty) { promptSave(store) })
+        if !store.userMixes.isEmpty {
+            let delete = NSMenuItem(title: "Удалить микс", action: nil, keyEquivalent: "")
+            let sub = NSMenu()
+            for mix in store.userMixes {
+                sub.addItem(ActionMenuItem("\(mix.emoji)  \(mix.name)") { store.delete(mix) })
+            }
+            delete.submenu = sub
+            menu.addItem(delete)
+        }
+        menu.addItem(.separator())
+        menu.addItem(ActionMenuItem("🎲  Случайный микс") { store.randomMix() })
+        menu.addItem(ActionMenuItem("Выключить все звуки", enabled: !store.active.isEmpty) { store.stopAll() })
+        return menu
+    }
+
+    static func timer(_ store: MixStore) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(.sectionHeader(title: "Выключить звук через"))
+        for minutes in MixStore.timerOptions {
+            let title = minutes < 60 ? "\(minutes) минут" : minutes == 60 ? "1 час" : minutes == 90 ? "1,5 часа" : "2 часа"
+            menu.addItem(ActionMenuItem(title) { store.startTimer(minutes: minutes) })
+        }
+        if store.timerRemaining != nil {
+            menu.addItem(.separator())
+            menu.addItem(ActionMenuItem("Отменить таймер") { store.cancelTimer() })
+        }
+        return menu
+    }
+
+    static func settings(_ store: MixStore) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(ActionMenuItem("Открывать при входе в систему", checked: store.launchAtLogin) {
+            store.setLaunchAtLogin(!store.launchAtLogin)
+        })
+        menu.addItem(.separator())
+        menu.addItem(ActionMenuItem("О Murmur") { showAbout() })
+        menu.addItem(ActionMenuItem("Выйти из Murmur") { NSApp.terminate(nil) })
+        return menu
+    }
+
+    private static func promptSave(_ store: MixStore) {
+        let alert = NSAlert()
+        alert.messageText = "Сохранить микс"
+        alert.informativeText = "Он появится в меню миксов слева вверху."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.placeholderString = store.suggestedMixName
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Сохранить")
+        alert.addButton(withTitle: "Отмена")
+        alert.window.initialFirstResponder = field
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            store.saveCurrentMix(named: field.stringValue)
+        }
+    }
+
+    private static func showAbout() {
+        let credits = NSMutableAttributedString(
+            string: "Звуки природы для фокуса и сна прямо в строке меню.\n⌃⌥P — пауза из любого приложения.\n\n",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.labelColor]
+        )
+        credits.append(NSAttributedString(
+            string: "Записи: библиотека Moodist (github.com/remvze/moodist), Pixabay Content License и CC0. Шумы, тон и сердцебиение синтезируются в реальном времени.",
+            attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.secondaryLabelColor]
+        ))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        credits.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: credits.length))
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+    }
+}
+
+final class ActionMenuItem: NSMenuItem {
+    private let handler: () -> Void
+
+    init(_ title: String, checked: Bool = false, enabled: Bool = true, handler: @escaping () -> Void) {
+        self.handler = handler
+        super.init(title: title, action: #selector(fire), keyEquivalent: "")
+        target = self
+        state = checked ? .on : .off
+        isEnabled = enabled
+    }
+
+    required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    @objc private func fire() { handler() }
+}

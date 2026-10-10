@@ -1,0 +1,294 @@
+import AppKit
+import Carbon.HIToolbox
+import ServiceManagement
+import SwiftUI
+
+struct Mix: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var emoji: String
+    var levels: [String: Double]
+    var builtIn = false
+
+    static let presets: [Mix] = [
+        Mix(id: "b.cafe", name: "Дождливое кафе", emoji: "☕️", levels: ["rain": 0.55, "cafe": 0.5, "window": 0.3], builtIn: true),
+        Mix(id: "b.focus", name: "Фокус", emoji: "🎧", levels: ["brown": 0.55, "rain": 0.35, "keyboard": 0.15], builtIn: true),
+        Mix(id: "b.fire", name: "У костра", emoji: "🔥", levels: ["campfire": 0.7, "crickets": 0.35, "wind": 0.2], builtIn: true),
+        Mix(id: "b.sea", name: "Море", emoji: "🌊", levels: ["waves": 0.7, "trees": 0.2, "pink": 0.15], builtIn: true),
+        Mix(id: "b.storm", name: "Гроза", emoji: "⛈️", levels: ["storm": 0.6, "heavyrain": 0.45, "trees": 0.3], builtIn: true),
+        Mix(id: "b.train", name: "Ночной поезд", emoji: "🚆", levels: ["train": 0.6, "window": 0.35, "heartbeat": 0.15], builtIn: true),
+        Mix(id: "b.library", name: "Библиотека", emoji: "📚", levels: ["library": 0.5, "clock": 0.3, "typewriter": 0.2, "rain": 0.25], builtIn: true),
+    ]
+}
+
+@MainActor
+final class MixStore: ObservableObject {
+    @Published private(set) var active: [String]
+    @Published private(set) var volumes: [String: Double]
+    @Published private(set) var master: Double
+    @Published private(set) var isPlaying = false
+    @Published private(set) var userMixes: [Mix]
+    @Published private(set) var timerRemaining: TimeInterval?
+    @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
+
+    private let audio = AudioEngine()
+    private let defaults = UserDefaults.standard
+    private var timerEnd: Date?
+    private var timerTick: Timer?
+    private var timerFade: Double = 1
+    private var hotKey: HotKey?
+    private var wakeObserver: NSObjectProtocol?
+
+    static let timerOptions = [15, 30, 45, 60, 90, 120]
+    static let timerFadeOut: TimeInterval = 45
+
+    init() {
+        active = (defaults.stringArray(forKey: "active") ?? ["rain"]).filter { Sound.byID[$0] != nil }
+        volumes = defaults.dictionary(forKey: "volumes") as? [String: Double] ?? [:]
+        master = defaults.object(forKey: "master") as? Double ?? 0.8
+        if let data = defaults.data(forKey: "userMixes"), let mixes = try? JSONDecoder().decode([Mix].self, from: data) {
+            userMixes = mixes
+        } else {
+            userMixes = []
+        }
+        audio.masterVolume = Self.curve(master)
+
+        hotKey = HotKey(keyCode: UInt32(kVK_ANSI_P), modifiers: UInt32(controlKey | optionKey)) { [weak self] in
+            MainActor.assumeIsolated { self?.togglePlay() }
+        }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.audio.recover() }
+        }
+    }
+
+    // MARK: Queries
+
+    var allMixes: [Mix] { Mix.presets + userMixes }
+
+    func isActive(_ sound: Sound) -> Bool { active.contains(sound.id) }
+
+    func volume(_ sound: Sound) -> Double { volumes[sound.id] ?? sound.defaultVolume }
+
+    func isCurrent(_ mix: Mix) -> Bool { Set(mix.levels.keys) == Set(active) }
+
+    var statusLine: String {
+        let names = active.compactMap { Sound.byID[$0]?.name }
+        guard !names.isEmpty else { return "Выберите звуки для микса" }
+        var line = names.prefix(2).joined(separator: ", ")
+        if names.count > 2 { line += " и ещё \(names.count - 2)" }
+        return isPlaying ? line : "Пауза · \(line)"
+    }
+
+    var timerLabel: String? {
+        guard let left = timerRemaining else { return nil }
+        let s = Int(left.rounded(.up))
+        return s >= 3600
+            ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
+            : String(format: "%d:%02d", s / 60, s % 60)
+    }
+
+    // MARK: Playback
+
+    func toggle(_ sound: Sound) {
+        if let i = active.firstIndex(of: sound.id) {
+            active.remove(at: i)
+            if active.isEmpty { isPlaying = false }
+        } else {
+            active.append(sound.id)
+            isPlaying = true
+        }
+        sync(fade: 0.7)
+        persist()
+    }
+
+    func setVolume(_ sound: Sound, _ value: Double) {
+        volumes[sound.id] = value
+        if !active.contains(sound.id) {
+            // Dragging a dimmed row's slider switches the sound on, like tapping it.
+            active.append(sound.id)
+            isPlaying = true
+            sync(fade: 0.5)
+            persist()
+            return
+        }
+        sync(fade: 0.06)
+        persist()
+    }
+
+    func setMaster(_ value: Double) {
+        master = value
+        applyMaster()
+        persist()
+    }
+
+    func togglePlay() {
+        if active.isEmpty {
+            randomMix()
+            return
+        }
+        isPlaying.toggle()
+        sync(fade: isPlaying ? 1.0 : 0.6)
+    }
+
+    func stopAll() {
+        isPlaying = false
+        active = []
+        sync(fade: 0.6)
+        cancelTimer()
+        persist()
+    }
+
+    func apply(_ mix: Mix) {
+        active = Sound.all.map(\.id).filter { mix.levels[$0] != nil }
+        for (id, level) in mix.levels { volumes[id] = level }
+        isPlaying = true
+        sync(fade: 1.4)
+        persist()
+    }
+
+    func randomMix() {
+        let base = Sound.all.filter { $0.category == .water || $0.category == .nature }.randomElement()!
+        let extras = Sound.all
+            .filter { $0.category != base.category && $0.category != .noise }
+            .shuffled()
+            .prefix(Int.random(in: 1...2))
+        var levels = [base.id: Double.random(in: 0.55...0.8)]
+        for sound in extras { levels[sound.id] = Double.random(in: 0.2...0.45) }
+        apply(Mix(id: "random", name: "", emoji: "", levels: levels))
+    }
+
+    private func sync(fade: Double) {
+        for sound in Sound.all {
+            let on = isPlaying && active.contains(sound.id)
+            audio.setTarget(sound, gain: on ? Self.curve(volume(sound)) : 0, fade: fade)
+        }
+    }
+
+    private func applyMaster() {
+        audio.masterVolume = Self.curve(master) * Float(timerFade)
+    }
+
+    /// Ears hear loudness logarithmically; a power curve makes sliders feel even.
+    private static func curve(_ v: Double) -> Float { Float(pow(v, 1.6)) }
+
+    // MARK: Mixes
+
+    func saveCurrentMix(named name: String) {
+        guard !active.isEmpty else { return }
+        let emojis = ["✨", "🌙", "🍃", "🪐", "🌿", "☁️", "🫧", "🌌"]
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mix = Mix(
+            id: UUID().uuidString,
+            name: trimmed.isEmpty ? suggestedMixName : trimmed,
+            emoji: emojis[userMixes.count % emojis.count],
+            levels: Dictionary(uniqueKeysWithValues: active.map { ($0, volumes[$0] ?? Sound.byID[$0]!.defaultVolume) })
+        )
+        userMixes.append(mix)
+        persist()
+    }
+
+    func delete(_ mix: Mix) {
+        userMixes.removeAll { $0.id == mix.id }
+        persist()
+    }
+
+    var suggestedMixName: String {
+        active.prefix(2).compactMap { Sound.byID[$0]?.name }.joined(separator: " + ")
+    }
+
+    // MARK: Sleep timer
+
+    func startTimer(minutes: Int) {
+        timerEnd = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        if !isPlaying { togglePlay() }
+        timerTick?.invalidate()
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tickTimer() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        timerTick = timer
+        tickTimer()
+    }
+
+    func cancelTimer() {
+        timerTick?.invalidate()
+        timerTick = nil
+        timerEnd = nil
+        timerRemaining = nil
+        timerFade = 1
+        applyMaster()
+    }
+
+    private func tickTimer() {
+        guard let end = timerEnd else { return }
+        let left = end.timeIntervalSinceNow
+        if left <= 0 {
+            isPlaying = false
+            sync(fade: 0.3)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                MainActor.assumeIsolated { self?.cancelTimer() }
+            }
+            timerTick?.invalidate()
+            timerTick = nil
+            timerEnd = nil
+            timerRemaining = nil
+            return
+        }
+        timerRemaining = left
+        // Drift off gently instead of cutting the sound.
+        timerFade = min(1, left / Self.timerFadeOut)
+        applyMaster()
+    }
+
+    func debugMeasure(after delay: Double, seconds: Double, completion: @escaping (Float, Int) -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [audio] in
+            audio.measureOutput(seconds: seconds, completion: completion)
+        }
+    }
+
+    // MARK: System
+
+    func setLaunchAtLogin(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+        } catch {
+            NSLog("Murmur: login item change failed: \(error)")
+        }
+        launchAtLogin = SMAppService.mainApp.status == .enabled
+    }
+
+    private func persist() {
+        defaults.set(active, forKey: "active")
+        defaults.set(volumes, forKey: "volumes")
+        defaults.set(master, forKey: "master")
+        if let data = try? JSONEncoder().encode(userMixes) {
+            defaults.set(data, forKey: "userMixes")
+        }
+    }
+}
+
+/// System-wide shortcut via Carbon — works without Accessibility permissions.
+final class HotKey {
+    private var ref: EventHotKeyRef?
+    private var handler: EventHandlerRef?
+    private let action: () -> Void
+
+    init(keyCode: UInt32, modifiers: UInt32, action: @escaping () -> Void) {
+        self.action = action
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
+            guard let userData else { return noErr }
+            Unmanaged<HotKey>.fromOpaque(userData).takeUnretainedValue().action()
+            return noErr
+        }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handler)
+        let id = EventHotKeyID(signature: OSType(0x4D52_4D52), id: 1)
+        RegisterEventHotKey(keyCode, modifiers, id, GetApplicationEventTarget(), 0, &ref)
+    }
+
+    deinit {
+        if let ref { UnregisterEventHotKey(ref) }
+        if let handler { RemoveEventHandler(handler) }
+    }
+}

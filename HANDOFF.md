@@ -1,0 +1,191 @@
+# Murmur — handoff
+
+Нативное macOS-приложение для строки меню: смешивание фоновых звуков (дождь, костёр, кафе, шумы, тоны) для работы и сна. Звуки — только из открытой библиотеки Moodist (Pixabay License / CC0) или синтез в коде; чужих звуков, иконок и брендов в проекте нет и быть не должно.
+
+- Состояние: v1.0, работает, установлено у автора в `/Applications/Murmur.app`.
+- Стек: Swift 5 language mode (компилятор Swift 6.4), SwiftUI + AppKit, AVAudioEngine. Без сторонних зависимостей.
+- Минимальная ОС: macOS 14 Sonoma. Сборка универсальная (arm64 + x86_64).
+- Язык интерфейса: русский (строки захардкожены, локализации нет).
+
+---
+
+## 1. Быстрый старт
+
+```bash
+cd ~/Projects/Murmur
+./build.sh                                  # → build/Murmur.app и build/Murmur.dmg (~1 мин)
+open build/Murmur.app
+cp -R build/Murmur.app /Applications/       # установить
+```
+
+Отладочные режимы (запуск бинарника внутри бандла, чтобы `Bundle.main` видел звуки):
+
+```bash
+build/Murmur.app/Contents/MacOS/Murmur --selftest          # отрендерить 150 с каждого звука: RMS, пик, NaN и «repeat» (повторяемость)
+build/Murmur.app/Contents/MacOS/Murmur --playtest          # реально проиграть все пресеты и замерить уровень на выходе
+build/Murmur.app/Contents/MacOS/Murmur --snapshot preview  # отрендерить окно в preview-light.png / preview-dark.png
+```
+
+`--playtest` реально играет звук. Перед ним удобно приглушить: `defaults write app.murmur.mac master -float 0.05`, потом вернуть `0.8`.
+
+---
+
+## 2. Окружение и грабли (важно!)
+
+На машине автора **нет Xcode**, только Command Line Tools. Из-за этого:
+
+1. **`@State` нельзя использовать.** В текущем SDK `@State` — макрос, а плагина `SwiftUIMacros` в CLT нет: ошибка `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`. Обход, принятый во всём проекте:
+   ```swift
+   private let hoverState = State<Bool>(initialValue: false)
+   private var hover: Bool { get { hoverState.wrappedValue } nonmutating set { hoverState.wrappedValue = newValue } }
+   // биндинг: hoverState.projectedValue
+   ```
+   `@StateObject`, `@ObservedObject`, `@EnvironmentObject`, `@Binding`, `@Published` работают нормально. Если появится Xcode, можно вернуть обычный `@State`.
+2. **Путь бинарника SwiftPM** — новый бэкенд кладёт его в `.build/out/Products/Release/Murmur` и перезаписывает при сборке под другую архитектуру. `build.sh` поэтому собирает каждую архитектуру, сразу копирует результат через `swift build --show-bin-path`, затем `lipo`.
+3. **Подмена бинарника внутри подписанного .app** → процесс убивается (exit 137). После ручного `cp` бинарника обязательно `codesign --force --deep -s - build/Murmur.app`.
+4. **zsh: не называйте переменную `path`** — она связана с `$PATH` и ломает shell.
+5. Предупреждения `ld: warning: search path ... not found` и `hdiutil ... deprecated` безвредны.
+6. `ImageRenderer` (режим `--snapshot`) не рисует `ScrollView`, `Menu` и **Liquid Glass** (стеклянные элементы пропадают вместе с содержимым). При `SelfTest.isRendering = true` список выводится без ScrollView, а `liquidGlass`/`GlassGroup` подменяют стекло матовой подложкой. Настоящее стекло видно только в живом приложении.
+
+---
+
+## 3. Структура
+
+```
+Package.swift                 SwiftPM, executable target "Murmur", macOS 14
+build.sh                      сборка: 2 арх → lipo → .app → иконка → Info.plist → ad-hoc подпись → DMG
+Sources/Murmur/
+  MurmurApp.swift             @main, MenuBarExtra, AppDelegate (окно-фолбэк), SelfTest (--selftest/--playtest/--snapshot)
+  Sound.swift                 модель звука и каталог Sound.all (28 шт.), категории, Color(hex:)
+  AudioEngine.swift           AVAudioEngine-граф, каналы с плавной громкостью, NoiseGenerator (шумы/тоны), LoopBuilder (петля часов + общие хелперы)
+  Texture.swift               гранулярный движок: TextureGenerator / GrainLayer, HeartbeatGenerator, SourceLoader, FastRandom
+  MixStore.swift              состояние (ObservableObject): активные звуки, громкости, пресеты, таймер сна, хоткей, автозапуск
+  Views.swift                 весь UI (панель, ленты, строки, слайдеры) + нативные NSMenu (MenuBuilder, ActionMenuItem)
+Resources/Sounds/*.mp3        24 записи (≈42 МБ), копируются в .app/Contents/Resources/Sounds
+Resources/icon-1024.png       иконка (генерируется scripts/make_icon.swift)
+scripts/make_icon.swift       рисует иконку кодом: `swift scripts/make_icon.swift Resources/icon-1024.png`
+CREDITS.md                    источники и лицензии звуков (кладётся в бандл)
+README-друзьям.txt            инструкция для получателей DMG (кладётся в DMG как «Как открыть.txt»)
+preview-*.png                 последние снапшоты UI
+build/                        артефакты (не исходники)
+```
+
+Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Доке). Настройки — `UserDefaults` этого домена.
+
+---
+
+## 4. Архитектура
+
+### Аудио (`AudioEngine.swift`)
+- Граф: `[канал] → mainMixerNode → PeakLimiter (AVAudioUnitEffect) → outputNode`. Лимитер нужен, чтобы микс из многих звуков не клиппировал.
+- **Канал** = `AVAudioSourceNode` с генератором реального времени (`RealtimeGenerator`: текстура, шум, тон, сердце; 48 кГц стерео) или — только для часов — `AVAudioPlayerNode` с точной петлёй. Каналы создаются лениво при первом `setTarget(gain > 0)` и удаляются, когда громкость доехала до 0.
+- **Плавность**: у каждого канала `gain → target` с линейной скоростью; таймер 60 Гц в `RunLoop.main(.common)`. Клик/вкл/выкл никогда не щёлкает.
+- **Простой**: через 2 с без каналов движок останавливается (CPU, сон Mac). `recover()` перезапускает граф после смены устройства вывода / пробуждения (`AVAudioEngineConfigurationChange`, `NSWorkspace.didWakeNotification`).
+- **Гранулярные текстуры вместо петель** (`Texture.swift`) — главное средство против повторов. Раньше каждый звук был одной записью по кругу (у китов круг 27,5 с, у клавиатуры 9,5 с — ухо это слышало). Теперь:
+  - `SourceLoader` декодирует запись (до 120 с), обрезает тишину по краям, нормализует громкость (`LoopBuilder.loudnessGain`: `min(0.13/RMS, 0.8/p99.9, 25) × boost`) + `softClip`. Буферы кэшируются (`NSCache`, ключ `src:<файл>:<boost>`).
+  - У звука есть `layers: [Layer]` (`Sound.swift`). Каждый `GrainLayer` непрерывно запускает «гранулы»: случайный фрагмент записи случайной длины (`length`), со случайной скоростью/тоном (`rate`, линейная интерполяция), громкостью (`gainJitterDB`), панорамой (`pan`), случайным зеркалированием L/R (`swapChannels`). Соседние гранулы склеиваются равномощным кроссфейдом (`fade`); недавние позиции не повторяются. `gap > 0` делает слой разреженным (редкие события с паузами).
+  - Многослойные звуки: **киты** = основная песня (rate 0.93–1.06) + «далёкая стая» (rate 0.78–0.9, −7 дБ, паузы 2–10 с) + фон `underwater.mp3` (−9 дБ); **гроза** + далёкие раскаты; **птицы** + редкие птицы по сторонам; **колокольчики** + второй слой.
+  - Всё считается на аудиопотоке без аллокаций (`UnsafeMutablePointer`, `FastRandom`).
+  - `--selftest` меряет «repeat»: корреляцию звука с самим собой через старую длину петли (петля = 1.00). Сейчас 0.00–0.16 у всех текстур.
+- **HeartbeatGenerator**: синтез «lub-dub» с вариабельностью ритма — темп плавает 54–64 уд/мин, каждый удар ±2,5 % по времени и 0.82–1.0 по силе.
+- **LoopBuilder** остался только для **часов** (ритм должен быть точным): окно `LoopRegion(start: 0.45, length: 15.005)` = ровно 15 тиков, кроссфейд 0.03 с.
+- **NoiseGenerator**: xorshift-ГПСЧ; белый (×0.15), розовый (фильтр Paul Kellet, ×0.068), коричневый (leaky integrator, ×2.4); тон — синус с медленным «дыханием» амплитуды 0.8–1.0 раз в ~12 с. Стерео-каналы шума независимы.
+
+### Состояние (`MixStore.swift`, `@MainActor`)
+- `active: [String]` (порядок включения), `volumes: [id: Double]`, `master`, `isPlaying`, `userMixes`, таймер.
+- Кривая громкости слайдеров: `pow(v, 1.6)`; master → `mainMixerNode.outputVolume`.
+- `sync(fade:)` пересчитывает цели всех каналов. Перетаскивание слайдера выключенного звука включает его.
+- Пресеты `Mix.presets` (встроенные, не удаляются) + пользовательские (JSON в UserDefaults `userMixes`).
+- Таймер сна: 15/30/45/60/90/120 мин, последние 45 с громкость плавно уходит в 0, отсчёт показывается в строке меню.
+- Глобальный хоткей **⌃⌥P** (Carbon `RegisterEventHotKey`, не требует прав Accessibility).
+- Автозапуск: `SMAppService.mainApp` (надёжно работает из `/Applications`).
+- Персистентность: ключи `active`, `volumes`, `master`, `userMixes`, `launchedBefore`.
+- `statusLine` и `suggestedMixName` — `statusLine` после редизайна в UI не используется (можно удалить).
+
+### UI (`Views.swift`)
+Структура: шапка → пресеты → список звуков со слайдерами → футер; стиль macOS 26/27 **Liquid Glass**:
+- ширина 292; фон панели не задаём — системное стекло MenuBarExtra (в оконном режиме — `PanelBackdrop`, `NSVisualEffectView`). Цвета семантические (`.primary/.secondary`), чтобы работала вибрация на стекле;
+- `liquidGlass(in:tint:interactive:)` — `glassEffect(Glass.regular.tint(..).interactive())` на macOS 26+, матовый материал на 14–15; `GlassGroup` = `GlassEffectContainer`;
+- шапка: стеклянные круглые кнопки «☰ все миксы» и «⚙», в центре большая Play с бирюзовым градиентом (`#49EEC8 → #52D2F0`);
+- **полоса популярных пресетов** под шапкой: Кафе / Фокус / Костёр / Море + 🎲 «Наугад» (стеклянные плитки, выбранная подкрашена). Полный список, свои миксы, сохранение/удаление — в меню ☰;
+- компактный список: строка 44 pt, иконка 17 pt light, название 12.5 pt, `LineSlider` — трек 2.5 pt, риска 3×11;
+- футер: стеклянная «пилюля» «Таймер сна» + общая громкость;
+- фокус-рамки отключены (`.focusEffectDisabled()`, `.focusable(false)` на кнопках);
+- меню — нативные `NSMenu` через `MenuBuilder.popUp`. Сохранение микса — `NSAlert` с текстовым полем.
+
+### Окно-фолбэк (`AppDelegate` в `MurmurApp.swift`)
+Иконку в строке меню могут скрыть «чёлка» MacBook или «Системные настройки → Строка меню». Поэтому микшер открывается и обычным окном (`ContentView(inWindow: true)`, сверху тёмная полоса 28 pt под «светофор»):
+- при первом запуске;
+- при повторном открытии уже запущенного приложения (`applicationShouldHandleReopen`);
+- если `statusItemVisible()` решила, что значок не на экране. В macOS 27 окна статус-айтема не видны процессу, поэтому эвристика, вероятно, всегда даёт `false` → окно открывается при каждом запуске (включая автозапуск). Это известный компромисс, см. TODO.
+
+---
+
+## 5. Каталог звуков
+
+Порядок = порядок в списке. id → источник.
+
+| id | Название | Источник |
+|---|---|---|
+| rain | Дождь | Moodist rain/light-rain |
+| heavyrain | Ливень | rain/heavy-rain |
+| window | Дождь в окно | rain/rain-on-window |
+| storm | Гроза | rain/thunder |
+| waves | Морской прибой | nature/waves |
+| river | Ручей | nature/river |
+| waterfall | Водопад | nature/waterfall |
+| campfire | Костёр (boost 1.8) | nature/campfire |
+| wind | Зимний ветер | nature/wind |
+| trees | Ветер в листве | nature/wind-in-trees |
+| birds | Птицы в парке | animals/birds |
+| crickets | Сверчки | animals/crickets |
+| whale | Киты (3 слоя) | animals/whale + places/underwater |
+| city | Улица | urban/busy-street |
+| cafe | Кафе | places/cafe |
+| subway | Метро | places/subway-station |
+| train | В поезде | transport/inside-a-train |
+| sailboat | Парусник | transport/sailboat |
+| library | Библиотека | places/library |
+| keyboard | Клавиатура | things/keyboard |
+| typewriter | Печатная машинка | things/typewriter |
+| clock | Часы (точная петля) | things/clock |
+| heartbeat | Сердцебиение | синтез |
+| chimes | Колокольчики | things/wind-chimes |
+| white / pink / brown | Белый / Розовый / Коричневый шум | синтез в реальном времени |
+| tone432 / tone528 | Тон 432 Гц / Тон 528 Гц | синтез (синус) |
+
+Пресеты: «Дождливое кафе», «Фокус», «У костра», «Море», «Гроза», «Ночной поезд», «Библиотека» (`Mix.presets` в `MixStore.swift`).
+
+**Лицензии.** Записи — из открытой библиотеки Moodist (github.com/remvze/moodist), лицензии Pixabay Content License и CC0; распространять в составе приложения можно. Скачивались с `https://raw.githubusercontent.com/remvze/moodist/main/public/sounds/<путь>.mp3`. Звуки из коммерческих приложений и сайтов не использовать — только открытые лицензии. Шумы из Moodist (9-секундные петли) сознательно заменены синтезом.
+
+**Добавить звук:** положить mp3 в `Resources/Sounds/<id>.mp3`, добавить `Sound(...)` в `Sound.all` с подходящими `layers` (контурный SF Symbol; проверить существование: `NSImage(systemSymbolName:)`), пересобрать, прогнать `--selftest` (RMS ≈ 0.1–0.13, repeat < 0.2, без NaN). Короткие записи — короткие гранулы (`length` 1–7 с); речь/голоса — узкий `rate` (±1 %), иначе слышно «ускорение». Для генераторов — новый `case` в `SoundSource` и ветка в `AudioEngine.load` / `NoiseGenerator`.
+
+---
+
+## 6. Распространение
+
+- `build.sh` подписывает ad-hoc (`codesign -s -`). Без сертификата Apple Developer ($99/год) у друзей Gatekeeper ругнётся при первом запуске: «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть» или `xattr -dr com.apple.quarantine /Applications/Murmur.app`. Это описано в `README-друзьям.txt`.
+- Для нормального распространения: Developer ID подпись + `xcrun notarytool` (нужен Xcode/аккаунт).
+- Версия задаётся в `build.sh` (`VERSION="1.0"`).
+
+---
+
+## 7. Проверено / не проверено
+
+Проверено автоматически: сборка обеих архитектур; все петли (стыки чистые, уровни выровнены, костёр/сверчки/парусник чуть тише — природа записей); все пресеты и тоны реально играют через движок; вёрстка (снапшоты светлой/тёмной темы); автор подтвердил: «всё работает».
+
+Не проверено руками ассистентом (нет доступа к UI): нативные меню (миксы/таймер/настройки), горячая клавиша ⌃⌥P, таймер сна до конца, автозапуск, поведение при смене аудиоустройства.
+
+---
+
+## 8. Идеи / TODO
+
+- Не открывать окно при автозапуске (определять запуск как login item) или сделать настройку «Показывать окно при запуске».
+- Удалить мёртвый `statusLine` из `MixStore`.
+- Анимированные иконки активных звуков, сейчас «пульсируют» только шумы/тоны.
+- Liquid Glass проверен только сборкой и офлайн-снапшотом с подменой — живой вид на macOS 26/27 стоит посмотреть глазами.
+- Возможно, стоит дать пользователю регулятор «разнообразия» (ширина `rate`/частота событий).
+- Media keys / Now Playing (`MPRemoteCommandCenter`) — осознанно не сделано, чтобы не перехватывать клавиши у Музыки.
+- Локализация (EN), настройка хоткея, больше звуков из Moodist (там 80+: airport, night-village, rain-on-tent, singing-bowl и т. д.).
+- Developer ID + нотаризация для «чистого» запуска у друзей.
+- Репозиторий: https://github.com/docomoz/Murmur (публичный). DMG выкладывается в Releases: `gh release create vX.Y build/Murmur.dmg`.
