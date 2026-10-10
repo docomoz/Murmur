@@ -86,7 +86,6 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
 
             PresetStrip()
-                .padding(.horizontal, 12)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
@@ -243,69 +242,52 @@ private struct PresetStrip: View {
         ("b.cafe", "Кафе"), ("b.focus", "Фокус"), ("b.fire", "Костёр"), ("b.sea", "Море"),
     ]
 
-    /// Five tiles fill the strip exactly: four in the scrolling part + the pinned «Наугад».
+    /// The strip runs edge to edge (glass tiles aren't clipped by a scroll view's bounds, so the
+    /// scroll view must span the whole panel); tiles keep the usual 12 pt inset at rest.
+    private static let width: CGFloat = 292
+    private static let inset: CGFloat = 12
     private static let spacing: CGFloat = 6
-    private static let tileWidth: CGFloat = (292 - 24 - 4 * spacing) / 5
-    private static let visible = 4
+
+    private enum Kind { case random, mix(Mix) }
 
     private struct Item: Identifiable {
-        let mix: Mix
+        let id: String
+        let emoji: String
         let title: String
-        var id: String { mix.id }
+        let kind: Kind
     }
 
-    /// Your saved mixes first (newest on the left), then the built-in favourites.
+    /// «Наугад» first, then your saved mixes (newest first), then the built-in favourites.
     private var items: [Item] {
-        store.userMixes.reversed().map { Item(mix: $0, title: $0.name) }
+        [Item(id: "random", emoji: "🎲", title: "Наугад", kind: .random)]
+            + store.userMixes.reversed().map { Item(id: $0.id, emoji: $0.emoji, title: $0.name, kind: .mix($0)) }
             + Self.popular.compactMap { entry in
-                Mix.presets.first { $0.id == entry.id }.map { Item(mix: $0, title: entry.title) }
+                Mix.presets.first { $0.id == entry.id }.map { Item(id: $0.id, emoji: $0.emoji, title: entry.title, kind: .mix($0)) }
             }
     }
 
     var body: some View {
         let items = items
-        let overflow = items.count > Self.visible
-        GlassGroup(spacing: Self.spacing) {
-            HStack(spacing: Self.spacing) {
-                if SelfTest.isRendering {
-                    // ImageRenderer can't draw scroll views: show the same strip, just not scrollable.
-                    HStack(spacing: Self.spacing) {
-                        ForEach(items) { item in
-                            PresetTile(emoji: item.mix.emoji, title: item.title,
-                                       selected: store.isPlaying && store.isCurrent(item.mix), onDelete: nil) {}
-                                .frame(width: Self.tileWidth)
-                        }
-                    }
-                    .frame(width: CGFloat(Self.visible) * Self.tileWidth + CGFloat(Self.visible - 1) * Self.spacing, alignment: .leading)
+        let overflow = items.count > 5
+        // Five tiles fill the strip exactly; with more, they get a bit narrower so the next one peeks in.
+        let tileWidth = overflow ? 46 : (Self.width - 2 * Self.inset - 4 * Self.spacing) / 5
+
+        Group {
+            if SelfTest.isRendering {
+                // ImageRenderer can't draw scroll views: same strip, just not scrollable.
+                row(items, tileWidth: tileWidth)
+                    .frame(width: Self.width, alignment: .leading)
                     .clipped()
-                } else {
+            } else {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Self.spacing) {
-                            ForEach(items) { item in
-                                PresetTile(emoji: item.mix.emoji, title: item.title,
-                                           selected: store.isPlaying && store.isCurrent(item.mix),
-                                           onDelete: item.mix.builtIn ? nil : { store.delete(item.mix) }) {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.apply(item.mix) }
-                                }
-                                .frame(width: Self.tileWidth)
-                                .id(item.id)
-                            }
-                        }
-                        .padding(.vertical, 3)   // room for the glass rim, so it isn't cut by the scroll edges
+                        row(items, tileWidth: tileWidth)
                     }
-                    .frame(width: CGFloat(Self.visible) * Self.tileWidth + CGFloat(Self.visible - 1) * Self.spacing)
-                    .mask(
-                        HStack(spacing: 0) {
-                            Rectangle()
-                            LinearGradient(colors: [.black, .black.opacity(overflow ? 0 : 1)], startPoint: .leading, endPoint: .trailing)
-                                .frame(width: 14)
-                        }
-                    )
+                    .frame(width: Self.width)
                     .background(
                         // A mouse wheel only scrolls vertically; turn its notches into one-tile steps.
                         WheelCatcher { step in
-                            let last = max(items.count - Self.visible, 0)
+                            let last = max(items.count - 5, 0)
                             index = min(max(index + step, 0), last)
                             withAnimation(.easeOut(duration: 0.25)) {
                                 proxy.scrollTo(items[index].id, anchor: .leading)
@@ -314,17 +296,39 @@ private struct PresetStrip: View {
                     )
                     .onChange(of: store.userMixes.count) { _, _ in
                         index = 0
-                        if let first = items.first {
-                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(first.id, anchor: .leading) }
-                        }
+                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo("random", anchor: .leading) }
                     }
                 }
-                }
+            }
+        }
+    }
 
-                PresetTile(emoji: "🎲", title: "Наугад", selected: false, onDelete: nil) {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.randomMix() }
+    private func row(_ items: [Item], tileWidth: CGFloat) -> some View {
+        GlassGroup(spacing: Self.spacing) {
+            HStack(spacing: Self.spacing) {
+                ForEach(items) { item in
+                    tile(item)
+                        .frame(width: tileWidth)
+                        .id(item.id)
                 }
-                .frame(width: Self.tileWidth)
+            }
+            .padding(.horizontal, Self.inset)
+            .padding(.vertical, 3)   // room for the glass rim
+        }
+    }
+
+    @ViewBuilder
+    private func tile(_ item: Item) -> some View {
+        switch item.kind {
+        case .random:
+            PresetTile(emoji: item.emoji, title: item.title, selected: false, onDelete: nil) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.randomMix() }
+            }
+        case .mix(let mix):
+            PresetTile(emoji: item.emoji, title: item.title,
+                       selected: store.isPlaying && store.isCurrent(mix),
+                       onDelete: mix.builtIn ? nil : { store.delete(mix) }) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.apply(mix) }
             }
         }
     }
