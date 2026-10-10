@@ -104,14 +104,14 @@ final class MixStore: ObservableObject {
     @Published private(set) var timerRemaining: TimeInterval?
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published var theme: PanelTheme {
-        didSet { defaults.set(theme.rawValue, forKey: "theme") }
+        didSet { if !Self.sandboxed { defaults.set(theme.rawValue, forKey: "theme") } }
     }
     @Published var backdrop: PanelBackdrop {
-        didSet { defaults.set(backdrop.rawValue, forKey: "backdrop") }
+        didSet { if !Self.sandboxed { defaults.set(backdrop.rawValue, forKey: "backdrop") } }
     }
     @Published var accent: AccentChoice {
         didSet {
-            defaults.set(accent.rawValue, forKey: "accent")
+            if !Self.sandboxed { defaults.set(accent.rawValue, forKey: "accent") }
             Theme.accent = accent
         }
     }
@@ -383,7 +383,12 @@ final class MixStore: ObservableObject {
         launchAtLogin = SMAppService.mainApp.status == .enabled
     }
 
+    /// Test modes (`--snapshot`, `--playtest`) run in a sandbox: they read the user's settings
+    /// but never write anything back.
+    static var sandboxed = false
+
     private func persist() {
+        guard !Self.sandboxed else { return }
         defaults.set(active, forKey: "active")
         defaults.set(volumes, forKey: "volumes")
         defaults.set(master, forKey: "master")

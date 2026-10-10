@@ -126,18 +126,16 @@ private struct TopBar: View {
     @EnvironmentObject private var store: MixStore
 
     var body: some View {
-        GlassGroup(spacing: 16) {
-            HStack {
-                GlassIconButton(symbol: "checklist") { MenuBuilder.mixes(store) }
-                Spacer()
-                // Stop + Play sit close enough for their glass to melt into one block.
-                HStack(spacing: 3) {
-                    StopButton()
-                    PlayButton()
-                }
-                Spacer()
-                GlassIconButton(symbol: "gearshape") { MenuBuilder.settings(store) }
+        // Separate circles, no shared glass container: nothing melts together.
+        HStack {
+            GlassIconButton(symbol: "checklist") { MenuBuilder.mixes(store) }
+            Spacer()
+            HStack(alignment: .center, spacing: 10) {
+                StopButton()
+                PlayButton()
             }
+            Spacer()
+            GlassIconButton(symbol: "gearshape") { MenuBuilder.settings(store) }
         }
     }
 }

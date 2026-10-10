@@ -477,6 +477,7 @@ enum SelfTest {
     @MainActor
     static func snapshot(to prefix: String) {
         isRendering = true
+        MixStore.sandboxed = true
         let store = MixStore()
         store.previewUserMixes([
             Mix(id: "u1", name: "Вечерний", emoji: "🌙", levels: ["rain": 0.5, "vinyl": 0.3]),
@@ -517,7 +518,9 @@ enum SelfTest {
     /// Plays every preset through the real engine for a moment and reports the output level.
     @MainActor
     static func playtest() {
+        MixStore.sandboxed = true
         let store = MixStore()
+        store.setMaster(0.22)   // quiet while testing; the level report compensates for it
         let mixes = Mix.presets + [Mix(id: "n", name: "Белый шум", emoji: "", levels: ["white": 0.5]), Mix(id: "b", name: "Чаша", emoji: "", levels: ["bowl": 0.6]), Mix(id: "c", name: "Кот+винил", emoji: "", levels: ["cat": 0.6, "vinyl": 0.5]), Mix(id: "w", name: "Киты", emoji: "", levels: ["whale": 0.7]), Mix(id: "h", name: "Сердце", emoji: "", levels: ["heartbeat": 0.6])]
         var index = 0
         func next() {
