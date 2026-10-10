@@ -310,6 +310,9 @@ final class MixStore: ObservableObject {
         persist()
     }
 
+    /// Snapshot-only: show sample saved mixes without touching the user's data.
+    func previewUserMixes(_ mixes: [Mix]) { userMixes = mixes }
+
     func delete(_ mix: Mix) {
         userMixes.removeAll { $0.id == mix.id }
         persist()

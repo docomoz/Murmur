@@ -478,6 +478,10 @@ enum SelfTest {
     static func snapshot(to prefix: String) {
         isRendering = true
         let store = MixStore()
+        store.previewUserMixes([
+            Mix(id: "u1", name: "Вечерний", emoji: "🌙", levels: ["rain": 0.5, "vinyl": 0.3]),
+            Mix(id: "u2", name: "Глубина", emoji: "🫧", levels: ["whale": 0.6, "underwater": 0.4]),
+        ])
         store.apply(Mix.presets[0])
         store.setMaster(store.master)
         for (scheme, suffix) in [(ColorScheme.light, "light"), (.dark, "dark")] {

@@ -235,26 +235,96 @@ private struct Aurora: View {
 
 private struct PresetStrip: View {
     @EnvironmentObject private var store: MixStore
+    private let indexState = State<Int>(initialValue: 0)
+    private var index: Int { get { indexState.wrappedValue } nonmutating set { indexState.wrappedValue = newValue } }
 
-    /// The most loved mixes, one click away. The full list lives in the ☰ menu.
+    /// The most loved built-in mixes, one click away. The full list lives in the ☰ menu.
     private static let popular: [(id: String, title: String)] = [
         ("b.cafe", "Кафе"), ("b.focus", "Фокус"), ("b.fire", "Костёр"), ("b.sea", "Море"),
     ]
 
+    /// Five tiles fill the strip exactly: four in the scrolling part + the pinned «Наугад».
+    private static let spacing: CGFloat = 6
+    private static let tileWidth: CGFloat = (292 - 24 - 4 * spacing) / 5
+    private static let visible = 4
+
+    private struct Item: Identifiable {
+        let mix: Mix
+        let title: String
+        var id: String { mix.id }
+    }
+
+    /// Your saved mixes first (newest on the left), then the built-in favourites.
+    private var items: [Item] {
+        store.userMixes.reversed().map { Item(mix: $0, title: $0.name) }
+            + Self.popular.compactMap { entry in
+                Mix.presets.first { $0.id == entry.id }.map { Item(mix: $0, title: entry.title) }
+            }
+    }
+
     var body: some View {
-        GlassGroup(spacing: 6) {
-            HStack(spacing: 6) {
-                ForEach(Self.popular, id: \.id) { item in
-                    if let mix = Mix.presets.first(where: { $0.id == item.id }) {
-                        PresetTile(emoji: mix.emoji, title: item.title,
-                                   selected: store.isPlaying && store.isCurrent(mix)) {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.apply(mix) }
+        let items = items
+        let overflow = items.count > Self.visible
+        GlassGroup(spacing: Self.spacing) {
+            HStack(spacing: Self.spacing) {
+                if SelfTest.isRendering {
+                    // ImageRenderer can't draw scroll views: show the same strip, just not scrollable.
+                    HStack(spacing: Self.spacing) {
+                        ForEach(items) { item in
+                            PresetTile(emoji: item.mix.emoji, title: item.title,
+                                       selected: store.isPlaying && store.isCurrent(item.mix), onDelete: nil) {}
+                                .frame(width: Self.tileWidth)
+                        }
+                    }
+                    .frame(width: CGFloat(Self.visible) * Self.tileWidth + CGFloat(Self.visible - 1) * Self.spacing, alignment: .leading)
+                    .clipped()
+                } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Self.spacing) {
+                            ForEach(items) { item in
+                                PresetTile(emoji: item.mix.emoji, title: item.title,
+                                           selected: store.isPlaying && store.isCurrent(item.mix),
+                                           onDelete: item.mix.builtIn ? nil : { store.delete(item.mix) }) {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.apply(item.mix) }
+                                }
+                                .frame(width: Self.tileWidth)
+                                .id(item.id)
+                            }
+                        }
+                        .padding(.vertical, 3)   // room for the glass rim, so it isn't cut by the scroll edges
+                    }
+                    .frame(width: CGFloat(Self.visible) * Self.tileWidth + CGFloat(Self.visible - 1) * Self.spacing)
+                    .mask(
+                        HStack(spacing: 0) {
+                            Rectangle()
+                            LinearGradient(colors: [.black, .black.opacity(overflow ? 0 : 1)], startPoint: .leading, endPoint: .trailing)
+                                .frame(width: 14)
+                        }
+                    )
+                    .background(
+                        // A mouse wheel only scrolls vertically; turn its notches into one-tile steps.
+                        WheelCatcher { step in
+                            let last = max(items.count - Self.visible, 0)
+                            index = min(max(index + step, 0), last)
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                proxy.scrollTo(items[index].id, anchor: .leading)
+                            }
+                        }
+                    )
+                    .onChange(of: store.userMixes.count) { _, _ in
+                        index = 0
+                        if let first = items.first {
+                            withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(first.id, anchor: .leading) }
                         }
                     }
                 }
-                PresetTile(emoji: "🎲", title: "Наугад", selected: false) {
+                }
+
+                PresetTile(emoji: "🎲", title: "Наугад", selected: false, onDelete: nil) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { store.randomMix() }
                 }
+                .frame(width: Self.tileWidth)
             }
         }
     }
@@ -264,6 +334,7 @@ private struct PresetTile: View {
     let emoji: String
     let title: String
     let selected: Bool
+    let onDelete: (() -> Void)?
     let action: () -> Void
 
     var body: some View {
@@ -275,6 +346,7 @@ private struct PresetTile: View {
                     .foregroundStyle(selected ? Color.white : Color.primary.opacity(0.85))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .padding(.horizontal, 3)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 42)
@@ -284,6 +356,54 @@ private struct PresetTile: View {
         }
         .buttonStyle(.plain)
         .focusable(false)
+        .contextMenu {
+            if let onDelete {
+                Button("Удалить микс «\(title)»", role: .destructive, action: onDelete)
+            }
+        }
+    }
+}
+
+/// Invisible view that reports mouse-wheel notches over its area as ±1 steps (trackpads keep
+/// their native smooth horizontal scrolling). Clicks pass straight through it.
+private struct WheelCatcher: NSViewRepresentable {
+    let onStep: (Int) -> Void
+
+    final class CatcherView: NSView {
+        var onStep: ((Int) -> Void)?
+        private var monitor: Any?
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                guard let self, event.window === self.window, !event.hasPreciseScrollingDeltas,
+                      abs(event.scrollingDeltaY) > abs(event.scrollingDeltaX),
+                      self.bounds.contains(self.convert(event.locationInWindow, from: nil)) else { return event }
+                self.onStep?(event.scrollingDeltaY > 0 ? -1 : 1)
+                return nil
+            }
+        }
+
+        override func removeFromSuperview() {
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            super.removeFromSuperview()
+        }
+    }
+
+    func makeNSView(context: Context) -> CatcherView {
+        let view = CatcherView()
+        view.onStep = onStep
+        return view
+    }
+
+    func updateNSView(_ nsView: CatcherView, context: Context) {
+        nsView.onStep = onStep
     }
 }
 
