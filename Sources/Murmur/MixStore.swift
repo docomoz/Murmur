@@ -226,15 +226,46 @@ final class MixStore: ObservableObject {
         persist()
     }
 
+    /// «Наугад»: a random but believable scene — one main sound plus 1–2 that belong with it.
     func randomMix() {
-        let base = Sound.all.filter { $0.category == .water || $0.category == .nature }.randomElement()!
-        let extras = Sound.all
-            .filter { $0.category != base.category && $0.category != .noise }
-            .shuffled()
-            .prefix(Int.random(in: 1...2))
-        var levels = [base.id: Double.random(in: 0.55...0.8)]
-        for sound in extras { levels[sound.id] = Double.random(in: 0.2...0.45) }
-        apply(Mix(id: "random", name: "", emoji: "", levels: levels))
+        apply(Mix(id: "random", name: "", emoji: "", levels: Self.randomLevels(avoiding: Set(active))))
+    }
+
+    /// A place you could actually be in: the anchor is the main sound, extras only ever join
+    /// anchors they make sense with (no campfire under water on a train).
+    struct Scene {
+        let anchors: [String]
+        let extras: [String]
+    }
+
+    static let scenes: [Scene] = [
+        Scene(anchors: ["rain"], extras: ["cafe", "vinyl", "keyboard", "clock", "cat"]),         // дождливый день
+        Scene(anchors: ["cafe"], extras: ["rain", "city", "vinyl", "keyboard"]),                // кафе
+        Scene(anchors: ["city"], extras: ["rain", "cafe"]),                                     // город
+        Scene(anchors: ["campfire"], extras: ["crickets", "wind", "river"]),                    // костёр ночью
+        Scene(anchors: ["crickets"], extras: ["river", "wind", "campfire"]),                    // летняя ночь
+        Scene(anchors: ["birds", "river"], extras: ["wind", "river", "birds", "bowl"]),         // лес днём
+        Scene(anchors: ["waves"], extras: ["wind", "rain"]),                                    // море
+        Scene(anchors: ["underwater", "whale"], extras: ["whale", "underwater"]),               // глубина
+        Scene(anchors: ["storm"], extras: ["rain", "wind", "cat", "clock"]),                    // гроза за окном
+        Scene(anchors: ["train"], extras: ["rain", "heartbeat", "vinyl"]),                      // ночной поезд
+        Scene(anchors: ["bowl"], extras: ["river", "wind", "birds"]),                           // медитация
+        Scene(anchors: ["library"], extras: ["clock", "keyboard", "rain"]),                     // библиотека
+        Scene(anchors: ["white"], extras: ["rain", "keyboard"]),                                // фокус
+        Scene(anchors: ["cat"], extras: ["vinyl", "rain", "clock", "heartbeat", "campfire"]),   // уют
+    ]
+
+    static func randomLevels(avoiding current: Set<String> = []) -> [String: Double] {
+        for _ in 0..<8 {
+            let scene = scenes.randomElement()!
+            let anchor = scene.anchors.randomElement()!
+            let pool = scene.extras.filter { $0 != anchor }.shuffled()
+            let extras = pool.prefix(min(pool.count, Int.random(in: 1...2)))
+            var levels = [anchor: Double.random(in: 0.55...0.8)]
+            for id in extras { levels[id] = Double.random(in: 0.2...0.45) }
+            if Set(levels.keys) != current { return levels }
+        }
+        return ["rain": 0.6, "cafe": 0.4]
     }
 
     private func sync(fade: Double) {

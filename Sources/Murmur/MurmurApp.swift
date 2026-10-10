@@ -343,7 +343,18 @@ enum GlassHost {
     static func style(_ view: NSView, backdrop: PanelBackdrop, mixTint: NSColor?) {
         if #available(macOS 26.0, *), let glass = view.subviews.compactMap({ $0 as? NSGlassEffectView }).first {
             glass.style = .regular
-            glass.tintColor = backdrop == .mix ? mixTint?.withAlphaComponent(0.16) : nil
+            glass.tintColor = backdrop == .mix ? mixTint.map(Self.mixTint) : nil
+        }
+    }
+
+    /// The mix color as a glass tint that keeps text readable: deep and dark in dark mode,
+    /// soft and pale in light mode.
+    static func mixTint(_ color: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            if appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua {
+                return (color.blended(withFraction: 0.65, of: .black) ?? color).withAlphaComponent(0.55)
+            }
+            return (color.blended(withFraction: 0.55, of: .white) ?? color).withAlphaComponent(0.3)
         }
     }
 
@@ -396,6 +407,11 @@ enum SelfTest {
             case .file, .heartbeat: reportTexture(sound)
             case .whiteNoise: continue
             }
+        }
+        print("\nНаугад, примеры:")
+        for _ in 0..<12 {
+            let levels = MainActor.assumeIsolated { MixStore.randomLevels() }
+            print("  " + levels.sorted { $0.value > $1.value }.compactMap { Sound.byID[$0.key]?.name }.joined(separator: " + "))
         }
     }
 

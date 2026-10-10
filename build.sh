@@ -3,7 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="1.4"
+VERSION="1.5"
 APP="build/Murmur.app"
 
 echo "▸ Compiling (arm64 + x86_64)…"
@@ -40,7 +40,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleVersion</key><string>5</string>
+  <key>CFBundleVersion</key><string>6</string>
   <key>CFBundleDevelopmentRegion</key><string>ru</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>

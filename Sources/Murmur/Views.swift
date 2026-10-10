@@ -215,6 +215,7 @@ private struct PlayButton: View {
 /// Soft colored light under the glass, taking the colors of whatever is playing.
 private struct Aurora: View {
     @EnvironmentObject private var store: MixStore
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let tints = store.active.compactMap { Sound.byID[$0]?.tint }
@@ -226,7 +227,8 @@ private struct Aurora: View {
             Circle().fill(b).frame(width: 200).blur(radius: 80).offset(x: 120, y: -150)
             Circle().fill(c).frame(width: 180).blur(radius: 90).offset(x: -60, y: 260)
         }
-        .opacity(store.isPlaying && !tints.isEmpty ? 0.32 : 0.12)
+        // Gentler in dark mode, where bright color under light text costs contrast.
+        .opacity(store.isPlaying && !tints.isEmpty ? (colorScheme == .dark ? 0.16 : 0.3) : 0.08)
         .animation(.easeInOut(duration: 1.2), value: store.active)
         .animation(.easeInOut(duration: 0.8), value: store.isPlaying)
         .allowsHitTesting(false)
