@@ -3,7 +3,7 @@
 Записи взяты из открытой библиотеки **Moodist** — https://github.com/remvze/moodist
 Лицензии: Pixabay Content License (https://pixabay.com/service/license-summary/) и CC0 (https://creativecommons.org/publicdomain/zero/1.0/).
 
-Белый, розовый и коричневый шум, а также сердцебиение синтезируются приложением в реальном времени.
+Белый шум и сердцебиение синтезируются приложением в реальном времени.
 
 | Звук в Murmur      | Файл Moodist                    |
 |--------------------|---------------------------------|
@@ -30,3 +30,14 @@
 | Печатная машинка   | things/typewriter.mp3           |
 | Часы               | things/clock.mp3                |
 | Колокольчики       | things/wind-chimes.mp3          |
+| Дождь по палатке   | rain/rain-on-tent.mp3           |
+| Под водой          | places/underwater.mp3           |
+| Лягушки            | animals/frog.mp3                |
+| Джунгли            | nature/jungle.mp3               |
+| Чайки у моря       | animals/seagulls.mp3            |
+| Ночная деревня     | places/night-village.mp3        |
+| В самолёте         | transport/airplane.mp3          |
+| Мурлыканье кота    | animals/cat-purring.mp3         |
+| Виниловая пластинка| things/vinyl-effect.mp3         |
+| Вентилятор         | things/ceiling-fan.mp3          |
+| Поющая чаша        | things/singing-bowl.mp3         |

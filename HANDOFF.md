@@ -1,6 +1,6 @@
 # Murmur — handoff
 
-Нативное macOS-приложение для строки меню: смешивание фоновых звуков (дождь, костёр, кафе, шумы, тоны) для работы и сна. Звуки — только из открытой библиотеки Moodist (Pixabay License / CC0) или синтез в коде; чужих звуков, иконок и брендов в проекте нет и быть не должно.
+Нативное macOS-приложение для строки меню: смешивание фоновых звуков (дождь, костёр, кафе, киты, белый шум) для работы и сна. Звуки — только из открытой библиотеки Moodist (Pixabay License / CC0) или синтез в коде; чужих звуков, иконок и брендов в проекте нет и быть не должно.
 
 - Состояние: v1.0, работает, установлено у автора в `/Applications/Murmur.app`.
 - Стек: Swift 5 language mode (компилятор Swift 6.4), SwiftUI + AppKit, AVAudioEngine. Без сторонних зависимостей.
@@ -62,7 +62,7 @@ Sources/Murmur/
   Texture.swift               гранулярный движок: TextureGenerator / GrainLayer, HeartbeatGenerator, SourceLoader, FastRandom
   MixStore.swift              состояние (ObservableObject): активные звуки, громкости, пресеты, таймер сна, хоткей, автозапуск
   Views.swift                 весь UI (панель, ленты, строки, слайдеры) + нативные NSMenu (MenuBuilder, ActionMenuItem)
-Resources/Sounds/*.mp3        24 записи (≈42 МБ), копируются в .app/Contents/Resources/Sounds
+Resources/Sounds/*.mp3        34 записи (≈55 МБ), копируются в .app/Contents/Resources/Sounds
 Resources/icon-1024.png       иконка (генерируется scripts/make_icon.swift)
 scripts/make_icon.swift       рисует иконку кодом: `swift scripts/make_icon.swift Resources/icon-1024.png`
 CREDITS.md                    источники и лицензии звуков (кладётся в бандл)
@@ -90,7 +90,8 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
   - `--selftest` меряет «repeat»: корреляцию звука с самим собой через старую длину петли (петля = 1.00). Сейчас 0.00–0.16 у всех текстур.
 - **HeartbeatGenerator**: синтез «lub-dub» с вариабельностью ритма — темп плавает 54–64 уд/мин, каждый удар ±2,5 % по времени и 0.82–1.0 по силе.
 - **LoopBuilder** остался только для **часов** (ритм должен быть точным): окно `LoopRegion(start: 0.45, length: 15.005)` = ровно 15 тиков, кроссфейд 0.03 с.
-- **NoiseGenerator**: xorshift-ГПСЧ; белый (×0.15), розовый (фильтр Paul Kellet, ×0.068), коричневый (leaky integrator, ×2.4); тон — синус с медленным «дыханием» амплитуды 0.8–1.0 раз в ~12 с. Стерео-каналы шума независимы.
+- **NoiseGenerator**: белый шум (`FastRandom`, ×0.15). Розовый/коричневый шум и тоны 432/528 Гц были, но удалены по просьбе автора (v1.2).
+- **Режим событий** (`Layer.events`) для однократных записей: поющая чаша — один удар с затуханием ~35 с; запись целиком запускается каждые 12–24 с со своим тоном (rate 0.94–1.06) и панорамой, новые удары звучат поверх затухающих (до 4 одновременно).
 
 ### Состояние (`MixStore.swift`, `@MainActor`)
 - `active: [String]` (порядок включения), `volumes: [id: Double]`, `master`, `isPlaying`, `userMixes`, таймер.
@@ -108,7 +109,7 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 - ширина 292; фон панели не задаём — им служит `NSGlassEffectView` из `GlassHost`. Цвета семантические (`.primary/.secondary`), чтобы работала вибрация на стекле;
 - `liquidGlass(in:tint:interactive:)` — `glassEffect(Glass.regular.tint(..).interactive())` на macOS 26+, матовый материал на 14–15; `GlassGroup` = `GlassEffectContainer`;
 - шапка: стеклянные круглые кнопки «☰ все миксы» и «⚙»; в центре блок **Stop (38 pt) + Play (50 pt)** — стоят вплотную внутри `GlassEffectContainer`, поэтому стекло сливается в одну форму. Play — стекло, тонированное бирюзой (`#49EEC8`), без непрозрачной заливки, чтобы уважать системную настройку стекла;
-- `Aurora` — мягкое цветное свечение под стеклом в цветах играющих звуков; иконки активных звуков окрашены `sound.tint.gradient`;
+- `Aurora` — мягкое цветное свечение в цветах играющих звуков, только при подложке «В цветах микса»; иконки активных звуков окрашены `sound.tint.gradient`;
 - **полоса популярных пресетов** под шапкой: Кафе / Фокус / Костёр / Море + 🎲 «Наугад» (стеклянные плитки, выбранная подкрашена). Полный список, свои миксы, сохранение/удаление — в меню ☰;
 - компактный список: строка 44 pt, иконка 17 pt light, название 12.5 pt, `LineSlider` — трек 2.5 pt, риска 3×11;
 - футер: стеклянная «пилюля» «Таймер сна» + общая громкость;
@@ -117,7 +118,10 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 
 ### Строка меню и панель (`MurmurApp.swift`)
 - Точка входа — `MurmurMain` (чистый AppKit, `.accessory`). **SwiftUI `App` не используется**: со сценой `Settings` он сам открывал пустое окно 900×450 при каждом запуске, а `MenuBarExtra` даёт непрозрачное серое окно, которое нельзя сделать стеклянным.
-- Значок — `NSStatusItem` (иконка `waveform.circle(.fill)` + отсчёт таймера), обновляется по `store.objectWillChange`.
+- Значок — `NSStatusItem` с иконкой `StatusIcon` (рисуется кодом: кружок + 4 полоски, template). Пока играет звук, полоски мягко покачиваются (таймер 12 fps, амплитуда ±20 %); на паузе таймер остановлен. Рядом — отсчёт таймера сна.
+- Настройки внешнего вида (меню ⚙): **Тема** (как в системе / светлая / тёмная → `window.appearance`) и **Подложка** (`PanelBackdrop`): системная (`NSGlassEffectView.style = .regular`), прозрачная (`.clear`), матовая (`tintColor = windowBackgroundColor 0.8`), в цветах микса (тон первого звука + `Aurora`). Хранятся в UserDefaults `theme`/`backdrop`, применяются `AppDelegate.applyAppearance()` ко всем стеклянным окнам.
+- «О Murmur» — своё окно (`AboutView` на стекле): иконка, версия, автор Maksim Berezkin, ссылка на GitHub, лицензии.
+- Контент панели обрезан по `GlassHost.panelRadius` (22, continuous), иначе подсветка и фон вылезали за скруглённые углы стекла.
 - Панель — `GlassPanel` (`NSPanel`, borderless + nonactivating, может быть key → работает пробел). Контент — `GlassHost.make`: SwiftUI в `NSHostingView` внутри **`NSGlassEffectView`** (macOS 26+; следует системной настройке Liquid Glass «прозрачное/тонированное»), до 26 — `NSVisualEffectView(.menu)`. Закрывается по клику снаружи (global monitor), Esc, потере фокуса.
 - **Грабли macOS 27:** строку меню рисует система; окно статус-айтема в нашем процессе — заглушка с фреймом `(0, -33, 32, 33)`, `screen == nil`. Поэтому: при клике по значку панель позиционируется по курсору (`showPanel(fromClick: true)`); если координат нет и это не клик — открывается окно-фолбэк.
 - Окно-фолбэк (`showWindow`, `ContentView(inWindow: true)`, стекло без скруглений): при самом первом запуске и при повторном открытии приложения (двойной клик), если панель не к чему привязать.
@@ -126,7 +130,7 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 
 ## 5. Каталог звуков
 
-Порядок = порядок в списке. id → источник.
+Порядок в списке задаётся категориями в `Sound.all` (новые звуки вставлены в свои категории). id → источник.
 
 | id | Название | Источник |
 |---|---|---|
@@ -154,8 +158,18 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 | clock | Часы (точная петля) | things/clock |
 | heartbeat | Сердцебиение | синтез |
 | chimes | Колокольчики | things/wind-chimes |
-| white / pink / brown | Белый / Розовый / Коричневый шум | синтез в реальном времени |
-| tone432 / tone528 | Тон 432 Гц / Тон 528 Гц | синтез (синус) |
+| tent | Дождь по палатке | rain/rain-on-tent |
+| underwater | Под водой | places/underwater (также фон китов) |
+| frog | Лягушки | animals/frog |
+| jungle | Джунгли | nature/jungle |
+| seagulls | Чайки у моря | animals/seagulls |
+| village | Ночная деревня | places/night-village |
+| airplane | В самолёте | transport/airplane |
+| cat | Мурлыканье кота | animals/cat-purring |
+| vinyl | Виниловая пластинка | things/vinyl-effect |
+| fan | Вентилятор | things/ceiling-fan |
+| bowl | Поющая чаша (режим событий) | things/singing-bowl |
+| white | Белый шум | синтез в реальном времени |
 
 Пресеты: «Дождливое кафе», «Фокус», «У костра», «Море», «Гроза», «Ночной поезд», «Библиотека» (`Mix.presets` в `MixStore.swift`).
 

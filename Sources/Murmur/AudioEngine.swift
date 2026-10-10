@@ -2,7 +2,7 @@ import AVFoundation
 import AudioToolbox
 
 /// Owns the AVAudioEngine graph. Every sound is a channel (a never-repeating texture generator,
-/// a live noise/tone/heartbeat generator, or — for the clock — an exact loop) whose gain glides
+/// a live white-noise/heartbeat generator, or — for the clock — an exact loop) whose gain glides
 /// toward a target, so nothing ever clicks on/off.
 /// All methods must be called on the main thread.
 final class AudioEngine {
@@ -122,11 +122,8 @@ final class AudioEngine {
     private func load(_ ch: Channel) {
         let sound = ch.sound
         switch sound.source {
-        case .noise(let color):
-            attach(ch, node: Self.makeNode(NoiseGenerator(kind: .noise(color))), buffer: nil)
-            return
-        case .tone(let frequency):
-            attach(ch, node: Self.makeNode(NoiseGenerator(kind: .tone(frequency))), buffer: nil)
+        case .whiteNoise:
+            attach(ch, node: Self.makeNode(NoiseGenerator()), buffer: nil)
             return
         case .heartbeat:
             attach(ch, node: Self.makeNode(HeartbeatGenerator()), buffer: nil)
@@ -253,90 +250,14 @@ final class AudioEngine {
     }
 }
 
-/// Real-time colored noise and pure tones. Endless and never repeating, unlike a short loop.
+/// Real-time white noise: endless and never repeating, unlike a short noise loop.
 final class NoiseGenerator: RealtimeGenerator {
-    enum Kind {
-        case noise(NoiseColor)
-        case tone(Float)
-    }
-
-    private let kind: Kind
-    private var seed: UInt64
-    private var phase: Double = 0
-    private var swell: Double = 0
-    // Seven pink filter poles + one brown integrator, per stereo channel.
-    private let state = UnsafeMutablePointer<Float>.allocate(capacity: 16)
-
-    init(kind: Kind) {
-        self.kind = kind
-        self.seed = UInt64.random(in: 1...UInt64.max)
-        state.initialize(repeating: 0, count: 16)
-    }
-
-    deinit { state.deallocate() }
-
-    @inline(__always) private func white() -> Float {
-        seed ^= seed >> 12
-        seed ^= seed << 25
-        seed ^= seed >> 27
-        let r = seed &* 2_685_821_657_736_338_717
-        return Float(Int32(truncatingIfNeeded: r >> 32)) / Float(Int32.max)
-    }
+    private var random = FastRandom()
 
     func render(frames: Int, into list: UnsafeMutablePointer<AudioBufferList>) {
-        let buffers = UnsafeMutableAudioBufferListPointer(list)
-        if case .tone(let frequency) = kind {
-            renderTone(frequency, frames: frames, into: buffers)
-            return
-        }
-        guard case .noise(let color) = kind else { return }
-        for (c, buffer) in buffers.enumerated() {
+        for buffer in UnsafeMutableAudioBufferListPointer(list) {
             guard let out = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
-            let b = state + c * 8
-            switch color {
-            case .white:
-                for i in 0..<frames { out[i] = white() * 0.15 }
-            case .pink:
-                // Paul Kellet's refined pink filter.
-                for i in 0..<frames {
-                    let w = white()
-                    b[0] = 0.99886 * b[0] + w * 0.0555179
-                    b[1] = 0.99332 * b[1] + w * 0.0750759
-                    b[2] = 0.96900 * b[2] + w * 0.1538520
-                    b[3] = 0.86650 * b[3] + w * 0.3104856
-                    b[4] = 0.55000 * b[4] + w * 0.5329522
-                    b[5] = -0.7616 * b[5] - w * 0.0168980
-                    let pink = b[0] + b[1] + b[2] + b[3] + b[4] + b[5] + b[6] + w * 0.5362
-                    b[6] = w * 0.115926
-                    out[i] = pink * 0.068
-                }
-            case .brown:
-                for i in 0..<frames {
-                    b[7] = (b[7] + 0.02 * white()) / 1.02
-                    out[i] = b[7] * 2.4
-                }
-            }
-        }
-    }
-}
-
-extension NoiseGenerator {
-    /// A pure sine that gently swells (one breath every ~12 s), so it doesn't tire the ear.
-    fileprivate func renderTone(_ frequency: Float, frames: Int, into buffers: UnsafeMutableAudioBufferListPointer) {
-        let sampleRate = 48_000.0
-        let step = 2 * Double.pi * Double(frequency) / sampleRate
-        let swellStep = 2 * Double.pi * 0.083 / sampleRate
-        guard let first = buffers.first?.mData?.assumingMemoryBound(to: Float.self) else { return }
-        for i in 0..<frames {
-            let amplitude = 0.16 * (0.8 + 0.2 * sin(swell))
-            first[i] = Float(sin(phase) * amplitude)
-            phase += step
-            swell += swellStep
-            if phase > 2 * .pi { phase -= 2 * .pi }
-            if swell > 2 * .pi { swell -= 2 * .pi }
-        }
-        for buffer in buffers.dropFirst() {
-            buffer.mData?.assumingMemoryBound(to: Float.self).update(from: first, count: frames)
+            for i in 0..<frames { out[i] = Float(random.next() * 2 - 1) * 0.15 }
         }
     }
 }

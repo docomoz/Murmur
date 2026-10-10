@@ -91,7 +91,9 @@ struct ContentView: View {
             FooterView()
         }
         .frame(width: 292)
-        .background(Aurora())
+        .background(store.backdrop == .mix ? Aurora() : nil)
+        // The panel's glass is rounded; keep the content (and its glow) inside those corners.
+        .clipShape(RoundedRectangle(cornerRadius: inWindow ? 0 : GlassHost.panelRadius, style: .continuous))
         .focusEffectDisabled()
     }
 
@@ -460,11 +462,27 @@ enum MenuBuilder {
     static func settings(_ store: MixStore) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
+
+        let theme = NSMenuItem(title: "Тема", action: nil, keyEquivalent: "")
+        theme.submenu = NSMenu()
+        for option in PanelTheme.allCases {
+            theme.submenu?.addItem(ActionMenuItem(option.title, checked: store.theme == option) { store.theme = option })
+        }
+        menu.addItem(theme)
+
+        let backdrop = NSMenuItem(title: "Подложка", action: nil, keyEquivalent: "")
+        backdrop.submenu = NSMenu()
+        for option in PanelBackdrop.allCases {
+            backdrop.submenu?.addItem(ActionMenuItem(option.title, checked: store.backdrop == option) { store.backdrop = option })
+        }
+        menu.addItem(backdrop)
+
+        menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Открывать при входе в систему", checked: store.launchAtLogin) {
             store.setLaunchAtLogin(!store.launchAtLogin)
         })
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("О Murmur") { showAbout() })
+        menu.addItem(ActionMenuItem("О Murmur") { (NSApp.delegate as? AppDelegate)?.showAbout() })
         menu.addItem(ActionMenuItem("Выйти из Murmur") { NSApp.terminate(nil) })
         return menu
     }
@@ -484,30 +502,6 @@ enum MenuBuilder {
             store.saveCurrentMix(named: field.stringValue)
         }
     }
-
-    private static func showAbout() {
-        let credits = NSMutableAttributedString(
-            string: "Автор — Maksim Berezkin\n",
-            attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.labelColor]
-        )
-        credits.append(NSAttributedString(
-            string: "github.com/docomoz/Murmur\n\n",
-            attributes: [.font: NSFont.systemFont(ofSize: 11), .link: URL(string: "https://github.com/docomoz/Murmur")!]
-        ))
-        credits.append(NSAttributedString(
-            string: "Звуки природы для фокуса и сна прямо в строке меню.\n⌃⌥P — пауза из любого приложения.\n\n",
-            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.labelColor]
-        ))
-        credits.append(NSAttributedString(
-            string: "Записи: библиотека Moodist (github.com/remvze/moodist), Pixabay Content License и CC0. Шумы, тон и сердцебиение синтезируются в реальном времени.",
-            attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.secondaryLabelColor]
-        ))
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        credits.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: credits.length))
-        NSApp.activate(ignoringOtherApps: true)
-        NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
-    }
 }
 
 final class ActionMenuItem: NSMenuItem {
@@ -524,4 +518,65 @@ final class ActionMenuItem: NSMenuItem {
     required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     @objc private func fire() { handler() }
+}
+
+// MARK: About
+
+struct AboutView: View {
+    private var version: String {
+        let info = Bundle.main.infoDictionary
+        return "Версия \(info?["CFBundleShortVersionString"] as? String ?? "1.0")"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
+                .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+
+            Text("Murmur")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .padding(.top, 10)
+            Text(version)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+
+            VStack(spacing: 4) {
+                Text("АВТОР")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(1)
+                    .foregroundStyle(.secondary)
+                Text("Maksim Berezkin")
+                    .font(.system(size: 15, weight: .semibold))
+                Link("github.com/docomoz/Murmur", destination: URL(string: "https://github.com/docomoz/Murmur")!)
+                    .font(.system(size: 12))
+            }
+            .padding(.top, 22)
+
+            Text("Звуки природы для фокуса и сна\nпрямо в строке меню. ⌃⌥P — пауза\nиз любого приложения.")
+                .font(.system(size: 12))
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .padding(.top, 20)
+
+            Text("Записи — библиотека Moodist, лицензии Pixabay\nи CC0. Белый шум и сердцебиение\nсинтезируются в реальном времени.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .padding(.top, 14)
+
+            Text("© 2026 Maksim Berezkin")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 18)
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 26)
+        .frame(width: 340)
+        .focusEffectDisabled()
+    }
 }

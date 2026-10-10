@@ -12,13 +12,47 @@ struct Mix: Codable, Identifiable, Hashable {
 
     static let presets: [Mix] = [
         Mix(id: "b.cafe", name: "Дождливое кафе", emoji: "☕️", levels: ["rain": 0.55, "cafe": 0.5, "window": 0.3], builtIn: true),
-        Mix(id: "b.focus", name: "Фокус", emoji: "🎧", levels: ["brown": 0.55, "rain": 0.35, "keyboard": 0.15], builtIn: true),
+        Mix(id: "b.focus", name: "Фокус", emoji: "🎧", levels: ["white": 0.3, "rain": 0.45, "keyboard": 0.15], builtIn: true),
         Mix(id: "b.fire", name: "У костра", emoji: "🔥", levels: ["campfire": 0.7, "crickets": 0.35, "wind": 0.2], builtIn: true),
-        Mix(id: "b.sea", name: "Море", emoji: "🌊", levels: ["waves": 0.7, "trees": 0.2, "pink": 0.15], builtIn: true),
+        Mix(id: "b.sea", name: "Море", emoji: "🌊", levels: ["waves": 0.7, "seagulls": 0.25, "trees": 0.15], builtIn: true),
         Mix(id: "b.storm", name: "Гроза", emoji: "⛈️", levels: ["storm": 0.6, "heavyrain": 0.45, "trees": 0.3], builtIn: true),
         Mix(id: "b.train", name: "Ночной поезд", emoji: "🚆", levels: ["train": 0.6, "window": 0.35, "heartbeat": 0.15], builtIn: true),
         Mix(id: "b.library", name: "Библиотека", emoji: "📚", levels: ["library": 0.5, "clock": 0.3, "typewriter": 0.2, "rain": 0.25], builtIn: true),
     ]
+}
+
+/// Light/dark look of the panel.
+enum PanelTheme: String, CaseIterable {
+    case system, light, dark
+
+    var title: String {
+        switch self {
+        case .system: "Как в системе"
+        case .light: "Светлая"
+        case .dark: "Тёмная"
+        }
+    }
+}
+
+/// What the glass under the panel looks like.
+enum PanelBackdrop: String, CaseIterable {
+    /// Standard system glass — follows the Liquid Glass setting in System Settings.
+    case system
+    /// The most transparent glass.
+    case clear
+    /// Frosted and calm, closer to a regular window.
+    case frosted
+    /// Glass tinted with soft light in the colors of what's playing.
+    case mix
+
+    var title: String {
+        switch self {
+        case .system: "Системная"
+        case .clear: "Прозрачная"
+        case .frosted: "Матовая"
+        case .mix: "В цветах микса"
+        }
+    }
 }
 
 @MainActor
@@ -30,6 +64,12 @@ final class MixStore: ObservableObject {
     @Published private(set) var userMixes: [Mix]
     @Published private(set) var timerRemaining: TimeInterval?
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @Published var theme: PanelTheme {
+        didSet { defaults.set(theme.rawValue, forKey: "theme") }
+    }
+    @Published var backdrop: PanelBackdrop {
+        didSet { defaults.set(backdrop.rawValue, forKey: "backdrop") }
+    }
 
     private let audio = AudioEngine()
     private let defaults = UserDefaults.standard
@@ -46,6 +86,8 @@ final class MixStore: ObservableObject {
         active = (defaults.stringArray(forKey: "active") ?? ["rain"]).filter { Sound.byID[$0] != nil }
         volumes = defaults.dictionary(forKey: "volumes") as? [String: Double] ?? [:]
         master = defaults.object(forKey: "master") as? Double ?? 0.8
+        theme = PanelTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
+        backdrop = PanelBackdrop(rawValue: defaults.string(forKey: "backdrop") ?? "") ?? .system
         if let data = defaults.data(forKey: "userMixes"), let mixes = try? JSONDecoder().decode([Mix].self, from: data) {
             userMixes = mixes
         } else {

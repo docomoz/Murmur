@@ -1,13 +1,8 @@
 import SwiftUI
 
-enum NoiseColor: Hashable {
-    case white, pink, brown
-}
-
 enum SoundSource: Hashable {
     case file(String)
-    case noise(NoiseColor)
-    case tone(Float)
+    case whiteNoise
     case heartbeat
 }
 
@@ -15,8 +10,8 @@ enum SoundCategory: String, CaseIterable, Identifiable {
     case water = "Дождь и вода"
     case nature = "Природа"
     case city = "Город и дорога"
-    case rhythm = "Ритм"
-    case noise = "Шумы и тоны"
+    case rhythm = "Дом и ритм"
+    case noise = "Шум"
 
     var id: String { rawValue }
 }
@@ -41,6 +36,9 @@ struct Layer {
     var swapChannels = true
     /// Silence between grains, seconds. Non-zero makes a sparse layer of occasional events.
     var gap: ClosedRange<Double> = 0...0
+    /// Event mode for one-shot recordings (a singing bowl strike): the whole recording plays from
+    /// its start every `events` seconds, overlapping the previous ring-out. `length`/`fade`/`gap` are ignored.
+    var events: ClosedRange<Double>? = nil
 }
 
 /// Exact loop window for rhythmic recordings, where a long crossfade would double the beats.
@@ -85,6 +83,10 @@ extension Sound {
         Sound(id: "river", name: "Ручей", symbol: "drop", category: .water, tint: Color(hex: 0x1FBFB0), source: .file("river")),
         Sound(id: "waterfall", name: "Водопад", symbol: "humidity", category: .water, tint: Color(hex: 0x2B9CC9), source: .file("waterfall"),
               layers: [Layer(length: 3...7, fade: 1.5, rate: 0.97...1.03)]),
+        Sound(id: "tent", name: "Дождь по палатке", symbol: "tent", category: .water, tint: Color(hex: 0x5E9C76), source: .file("tent"),
+              layers: [Layer(length: 6...12, rate: 0.98...1.02)]),
+        Sound(id: "underwater", name: "Под водой", symbol: "bubbles.and.sparkles", category: .water, tint: Color(hex: 0x2F7FD0), source: .file("underwater"),
+              layers: [Layer(length: 8...16, fade: 3, rate: 0.97...1.03)]),
 
         // Природа
         Sound(id: "campfire", name: "Костёр", symbol: "flame", category: .nature, tint: Color(hex: 0xFF7438), source: .file("campfire"), boost: 1.8,
@@ -105,6 +107,14 @@ extension Sound {
                        Layer(length: 4...9, fade: 2, rate: 0.78...0.9, gainDB: -7, pan: 0.8, gap: 2...10),
                        // The ocean itself, so there is never dead silence between songs.
                        Layer(file: "underwater", length: 8...16, fade: 3, rate: 0.97...1.03, gainDB: -9)]),
+        Sound(id: "frog", name: "Лягушки", symbol: "lizard", category: .nature, tint: Color(hex: 0x58B05A), source: .file("frog"),
+              layers: [Layer(length: 5...12, rate: 0.97...1.03)]),
+        Sound(id: "jungle", name: "Джунгли", symbol: "tree", category: .nature, tint: Color(hex: 0x2FA05A), source: .file("jungle"),
+              layers: [Layer(length: 8...16, rate: 0.98...1.02)]),
+        Sound(id: "seagulls", name: "Чайки у моря", symbol: "beach.umbrella", category: .nature, tint: Color(hex: 0x3BB3D6), source: .file("seagulls"),
+              layers: [Layer(length: 4...9, fade: 2, rate: 0.97...1.03)]),
+        Sound(id: "village", name: "Ночная деревня", symbol: "house", category: .nature, tint: Color(hex: 0x7468C8), source: .file("village"),
+              layers: [Layer(length: 8...16, rate: 0.98...1.02)]),
 
         // Город и дорога
         Sound(id: "city", name: "Улица", symbol: "building.2", category: .city, tint: Color(hex: 0xF0A030), source: .file("city")),
@@ -114,6 +124,8 @@ extension Sound {
         Sound(id: "train", name: "В поезде", symbol: "lightrail", category: .city, tint: Color(hex: 0xD9663F), source: .file("train"),
               layers: [Layer(length: 6...12, fade: 2)]),
         Sound(id: "sailboat", name: "Парусник", symbol: "sailboat", category: .city, tint: Color(hex: 0x3398D6), source: .file("sailboat")),
+        Sound(id: "airplane", name: "В самолёте", symbol: "airplane", category: .city, tint: Color(hex: 0x6E8FB8), source: .file("airplane"),
+              layers: [Layer(length: 6...12, rate: 0.985...1.015)]),
         Sound(id: "library", name: "Библиотека", symbol: "books.vertical", category: .city, tint: Color(hex: 0xA6774E), source: .file("library")),
 
         // Ритм
@@ -124,16 +136,21 @@ extension Sound {
         Sound(id: "clock", name: "Часы", symbol: "clock", category: .rhythm, tint: Color(hex: 0xB89B62), source: .file("clock"),
               crossfade: 0.03, region: LoopRegion(start: 0.45, length: 15.005), defaultVolume: 0.4),
         Sound(id: "heartbeat", name: "Сердцебиение", symbol: "heart", category: .rhythm, tint: Color(hex: 0xEF4B6C), source: .heartbeat, defaultVolume: 0.5),
+        Sound(id: "cat", name: "Мурлыканье кота", symbol: "cat", category: .rhythm, tint: Color(hex: 0xE0915A), source: .file("cat"), defaultVolume: 0.5,
+              layers: [Layer(length: 3...7, fade: 1, rate: 0.98...1.02)]),
+        Sound(id: "vinyl", name: "Виниловая пластинка", symbol: "opticaldisc", category: .rhythm, tint: Color(hex: 0xB0656E), source: .file("vinyl"), defaultVolume: 0.45,
+              layers: [Layer(length: 4...9, fade: 1.5, rate: 0.99...1.01)]),
+        Sound(id: "fan", name: "Вентилятор", symbol: "fan.ceiling", category: .rhythm, tint: Color(hex: 0x7FA0B0), source: .file("fan"),
+              layers: [Layer(length: 2...5, fade: 1.2, rate: 0.98...1.02)]),
+        Sound(id: "bowl", name: "Поющая чаша", symbol: "bell", category: .rhythm, tint: Color(hex: 0xD4A040), source: .file("bowl"), defaultVolume: 0.45,
+              // Each strike is a different bowl: new pitch, new side, ringing over the last one.
+              layers: [Layer(rate: 0.94...1.06, gainDB: -4, gainJitterDB: 2, pan: 0.5, events: 12...24)]),
         Sound(id: "chimes", name: "Колокольчики", symbol: "sparkles", category: .rhythm, tint: Color(hex: 0xB98AF0), source: .file("chimes"), defaultVolume: 0.4,
               layers: [Layer(length: 5...12, fade: 3, rate: 0.995...1.005),
                        Layer(length: 4...8, fade: 2.5, rate: 0.995...1.005, gainDB: -7, pan: 0.7, gap: 4...14)]),
 
-        // Шумы — генерируются в реальном времени и никогда не повторяются
-        Sound(id: "white", name: "Белый шум", symbol: "waveform", category: .noise, tint: Color(hex: 0x8F9AB3), source: .noise(.white), defaultVolume: 0.35),
-        Sound(id: "pink", name: "Розовый шум", symbol: "waveform.path", category: .noise, tint: Color(hex: 0xF07AAA), source: .noise(.pink), defaultVolume: 0.4),
-        Sound(id: "brown", name: "Коричневый шум", symbol: "speaker.wave.2", category: .noise, tint: Color(hex: 0xA2704A), source: .noise(.brown), defaultVolume: 0.45),
-        Sound(id: "tone432", name: "Тон 432 Гц", symbol: "tuningfork", category: .noise, tint: Color(hex: 0x49EEC8), source: .tone(432), defaultVolume: 0.3),
-        Sound(id: "tone528", name: "Тон 528 Гц", symbol: "tuningfork", category: .noise, tint: Color(hex: 0x52D2F0), source: .tone(528), defaultVolume: 0.3),
+        // Шум — генерируется в реальном времени и никогда не повторяется
+        Sound(id: "white", name: "Белый шум", symbol: "waveform", category: .noise, tint: Color(hex: 0x8F9AB3), source: .whiteNoise, defaultVolume: 0.35),
     ]
 
     static let byID: [String: Sound] = Dictionary(uniqueKeysWithValues: all.map { ($0.id, $0) })

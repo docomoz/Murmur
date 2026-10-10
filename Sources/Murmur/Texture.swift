@@ -125,6 +125,10 @@ final class GrainLayer {
     }
 
     private func spawn() {
+        if let events = spec.events {
+            spawnEvent(every: events)
+            return
+        }
         let sr = TextureGenerator.sampleRate
         let step = baseStep * random.next(in: spec.rate)
         var length = Int(random.next(in: spec.length) * sr)
@@ -172,6 +176,35 @@ final class GrainLayer {
         nextFadeIn = fade
         let gap = spec.gap.upperBound > 0 ? Int(random.next(in: spec.gap) * sr) : 0
         untilNext = max(length - fade + (gap > 0 ? fade + gap : 0), 1)
+    }
+
+    /// One whole recording from its start (a bowl strike), ringing over whatever is still sounding.
+    private func spawnEvent(every interval: ClosedRange<Double>) {
+        let sr = TextureGenerator.sampleRate
+        let step = baseStep * random.next(in: spec.rate)
+        let length = max(Int(Double(frames - 2) / step), 256)
+        let gain = Float(pow(10, (spec.gainDB + random.next(in: -spec.gainJitterDB...spec.gainJitterDB)) / 20))
+        let pan = random.next(in: -spec.pan...spec.pan)
+
+        var grain = Grain()
+        grain.position = 0
+        grain.step = step
+        grain.length = length
+        grain.fadeIn = min(Int(0.005 * sr), length / 2)
+        grain.fadeOut = min(Int(1.0 * sr), length / 2)
+        grain.gainL = gain * Float(min(1, 1 - pan))
+        grain.gainR = gain * Float(min(1, 1 + pan))
+        grain.swap = spec.swapChannels && random.next() < 0.5
+        grain.active = true
+        // Reuse a free slot, or replace the oldest (quietest by now) ring-out.
+        var slot = 0
+        for i in 0..<GrainLayer.slots {
+            if !grains[i].active { slot = i; break }
+            if grains[i].age > grains[slot].age { slot = i }
+        }
+        grains[slot] = grain
+        isFirst = false
+        untilNext = max(Int(random.next(in: interval) * sr), 1)
     }
 
     @inline(__always)

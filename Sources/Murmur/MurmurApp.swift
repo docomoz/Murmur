@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var storeObserver: AnyCancellable?
     private var outsideClickMonitor: Any?
     private var panelSize = CGSize(width: 292, height: 600)
+    private var aboutWindow: NSWindow?
+    private var glassViews: [NSView] = []
+    private var iconTimer: Timer?
+    private var iconPhase = 0.0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !SelfTest.isRendering, !CommandLine.arguments.contains("--playtest") else { return }
@@ -53,7 +57,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = item
         updateStatusItem()
         storeObserver = store.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async { self?.updateStatusItem() }
+            DispatchQueue.main.async {
+                self?.updateStatusItem()
+                self?.applyAppearance()
+            }
         }
 
         let firstLaunch = !UserDefaults.standard.bool(forKey: "launchedBefore")
@@ -79,10 +86,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
-        let symbol = store.isPlaying ? "waveform.circle.fill" : "waveform.circle"
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Murmur")
-        image?.isTemplate = true
-        button.image = image
+        let playing = store.isPlaying && !store.active.isEmpty
+        if playing, iconTimer == nil {
+            // A gentle, slow sway of the bars while sound is playing — 12 fps is plenty for it.
+            let timer = Timer(timeInterval: 1.0 / 12, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.iconPhase += 1.0 / 12
+                    self.statusItem?.button?.image = StatusIcon.image(phase: self.iconPhase, playing: true)
+                }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            iconTimer = timer
+        } else if !playing {
+            iconTimer?.invalidate()
+            iconTimer = nil
+        }
+        button.image = StatusIcon.image(phase: iconPhase, playing: playing)
         if let label = store.timerLabel {
             button.attributedTitle = NSAttributedString(string: " " + label, attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
@@ -139,6 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             panel.animator().alphaValue = 1
         }
         button?.highlight(true)
+        panel.invalidateShadow()
 
         outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             MainActor.assumeIsolated { self?.closePanel() }
@@ -162,11 +183,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func makePanel() -> GlassPanel {
         let panel = GlassPanel(contentRect: NSRect(x: 0, y: 0, width: 292, height: 600))
-        let content = GlassHost.make(ContentView().environmentObject(store), cornerRadius: 22)
+        let content = GlassHost.make(ContentView().environmentObject(store), cornerRadius: GlassHost.panelRadius)
         panelSize = content.frame.size
         panel.contentView = content
         panel.onClose = { [weak self] in self?.closePanel() }
+        glassViews.append(content)
+        applyAppearance()
         return panel
+    }
+
+    // MARK: Appearance
+
+    /// Applies the Theme / Backdrop settings to every glass window.
+    private func applyAppearance() {
+        let appearance: NSAppearance? = switch store.theme {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+        for window in [panel, window, aboutWindow].compactMap({ $0 }) where window.appearance != appearance {
+            window.appearance = appearance
+        }
+        let tint = store.active.first.flatMap { Sound.byID[$0] }.map { NSColor($0.tint) }
+        for view in glassViews {
+            GlassHost.style(view, backdrop: store.backdrop, mixTint: tint)
+        }
+    }
+
+    // MARK: About
+
+    func showAbout() {
+        closePanel()
+        if aboutWindow == nil {
+            let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable, .fullSizeContentView],
+                                  backing: .buffered, defer: false)
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.title = "О Murmur"
+            window.isMovableByWindowBackground = true
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            window.isReleasedWhenClosed = false
+            let content = GlassHost.make(AboutView(), cornerRadius: 0)
+            let size = content.frame.size
+            window.contentView = content
+            window.setContentSize(size)
+            window.center()
+            glassViews.append(content)
+            aboutWindow = window
+            applyAppearance()
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        aboutWindow?.makeKeyAndOrderFront(nil)
     }
 
     // MARK: Window fallback
@@ -190,9 +258,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.setContentSize(size)
             window.center()
             self.window = window
+            glassViews.append(content)
+            applyAppearance()
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+}
+
+/// The menu bar icon: bars in a circle, drawn by hand so they can sway softly while playing.
+enum StatusIcon {
+    private static let base: [CGFloat] = [0.46, 0.88, 0.66, 0.40]
+    private static let speed: [Double] = [0.9, 0.62, 1.1, 0.75]
+
+    static func image(phase: Double, playing: Bool) -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+            NSColor.black.set()
+            let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 1.6, dy: 1.6))
+            circle.lineWidth = 1.3
+            circle.stroke()
+
+            let width: CGFloat = 1.8, gap: CGFloat = 1.4
+            var x = rect.midX - (4 * width + 3 * gap) / 2
+            for i in 0..<4 {
+                var level = base[i]
+                if playing {
+                    level *= 0.8 + 0.2 * CGFloat(sin(phase * speed[i] * 2 * .pi + Double(i) * 1.7))
+                }
+                let height = max(10 * level, width)
+                NSBezierPath(roundedRect: NSRect(x: x, y: rect.midY - height / 2, width: width, height: height),
+                             xRadius: width / 2, yRadius: width / 2).fill()
+                x += width + gap
+            }
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Murmur"
+        return image
     }
 }
 
@@ -227,6 +329,35 @@ final class GlassPanel: NSPanel {
 /// Puts SwiftUI content on real system glass: `NSGlassEffectView` on macOS 26+ (follows the
 /// Liquid Glass look chosen in System Settings), a vibrant menu material before that.
 enum GlassHost {
+    static let panelRadius: CGFloat = 22
+
+    /// Backdrop styles: system glass, clear glass, frosted (window-like) or tinted by the mix.
+    @MainActor
+    static func style(_ view: NSView, backdrop: PanelBackdrop, mixTint: NSColor?) {
+        if #available(macOS 26.0, *), let glass = view as? NSGlassEffectView {
+            switch backdrop {
+            case .system:
+                glass.style = .regular
+                glass.tintColor = nil
+            case .clear:
+                glass.style = .clear
+                glass.tintColor = nil
+            case .frosted:
+                glass.style = .regular
+                glass.tintColor = NSColor.windowBackgroundColor.withAlphaComponent(0.8)
+            case .mix:
+                glass.style = .regular
+                glass.tintColor = mixTint?.withAlphaComponent(0.16)
+            }
+        } else if let effect = view as? NSVisualEffectView {
+            effect.material = switch backdrop {
+            case .system, .mix: .menu
+            case .clear: .popover
+            case .frosted: .windowBackground
+            }
+        }
+    }
+
     @MainActor
     static func make<Content: View>(_ content: Content, cornerRadius: CGFloat) -> NSView {
         let hosting = NSHostingView(rootView: content)
@@ -263,7 +394,7 @@ enum SelfTest {
             switch sound.source {
             case .file where sound.region != nil: report(sound)
             case .file, .heartbeat: reportTexture(sound)
-            case .noise, .tone: continue
+            case .whiteNoise: continue
             }
         }
     }
@@ -344,13 +475,30 @@ enum SelfTest {
             let rep = NSBitmapImageRep(cgImage: image)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(prefix)-\(suffix).png"))
         }
+        // About window and the menu bar icon (paused + two moments of the playing sway).
+        let about = ImageRenderer(content: AboutView().background(Color(nsColor: .windowBackgroundColor)))
+        about.scale = 2
+        if let image = about.cgImage {
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: "\(prefix)-about.png"))
+        }
+        let icons = ImageRenderer(content: HStack(spacing: 12) {
+            ForEach([(0.0, false), (0.3, true), (0.9, true)], id: \.0) { item in
+                Image(nsImage: StatusIcon.image(phase: item.0, playing: item.1)).resizable().frame(width: 72, height: 72)
+            }
+        }.padding(8).background(Color.white))
+        icons.scale = 1
+        if let image = icons.cgImage {
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: "\(prefix)-icon.png"))
+        }
     }
 
     /// Plays every preset through the real engine for a moment and reports the output level.
     @MainActor
     static func playtest() {
         let store = MixStore()
-        let mixes = Mix.presets + [Mix(id: "n", name: "Шумы", emoji: "", levels: ["white": 0.5, "pink": 0.5, "brown": 0.5]), Mix(id: "t", name: "Тоны", emoji: "", levels: ["tone432": 0.3, "tone528": 0.3]), Mix(id: "w", name: "Киты", emoji: "", levels: ["whale": 0.7]), Mix(id: "h", name: "Сердце", emoji: "", levels: ["heartbeat": 0.6])]
+        let mixes = Mix.presets + [Mix(id: "n", name: "Белый шум", emoji: "", levels: ["white": 0.5]), Mix(id: "b", name: "Чаша", emoji: "", levels: ["bowl": 0.6]), Mix(id: "c", name: "Кот+винил", emoji: "", levels: ["cat": 0.6, "vinyl": 0.5]), Mix(id: "w", name: "Киты", emoji: "", levels: ["whale": 0.7]), Mix(id: "h", name: "Сердце", emoji: "", levels: ["heartbeat": 0.6])]
         var index = 0
         func next() {
             guard index < mixes.count else { store.stopAll(); exit(0) }
