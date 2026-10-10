@@ -59,19 +59,6 @@ struct GlassGroup<Content: View>: View {
     }
 }
 
-/// Window-mode backdrop (the menu bar panel brings its own glass).
-struct PanelBackdrop: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .popover
-        view.blendingMode = .behindWindow
-        view.state = .active
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
-}
-
 // MARK: Panel
 
 struct ContentView: View {
@@ -104,7 +91,7 @@ struct ContentView: View {
             FooterView()
         }
         .frame(width: 292)
-        .background(inWindow ? AnyView(PanelBackdrop().ignoresSafeArea()) : AnyView(Color.clear))
+        .background(Aurora())
         .focusEffectDisabled()
     }
 
@@ -129,7 +116,11 @@ private struct TopBar: View {
             HStack {
                 GlassIconButton(symbol: "checklist", help: "Все миксы") { MenuBuilder.mixes(store) }
                 Spacer()
-                PlayButton()
+                // Stop + Play sit close enough for their glass to melt into one block.
+                HStack(spacing: 3) {
+                    StopButton()
+                    PlayButton()
+                }
                 Spacer()
                 GlassIconButton(symbol: "gearshape", help: "Настройки") { MenuBuilder.settings(store) }
             }
@@ -159,6 +150,29 @@ private struct GlassIconButton: View {
     }
 }
 
+private struct StopButton: View {
+    @EnvironmentObject private var store: MixStore
+
+    var body: some View {
+        let enabled = !store.active.isEmpty
+        Button {
+            withAnimation(.easeOut(duration: 0.3)) { store.stopAll() }
+        } label: {
+            Image(systemName: "stop.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary)
+                .opacity(enabled ? 0.85 : 0.3)
+                .frame(width: 38, height: 38)
+                .contentShape(Circle())
+                .liquidGlass(in: Circle(), interactive: enabled)
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .disabled(!enabled)
+        .help("Выключить все звуки")
+    }
+}
+
 private struct PlayButton: View {
     @EnvironmentObject private var store: MixStore
 
@@ -167,19 +181,40 @@ private struct PlayButton: View {
             Image(systemName: store.isPlaying ? "pause.fill" : "play.fill")
                 .font(.system(size: 19, weight: .semibold))
                 .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.15), radius: 1, y: 0.5)
                 .contentTransition(.symbolEffect(.replace))
                 .offset(x: store.isPlaying ? 0 : 1.5)
                 .frame(width: 50, height: 50)
-                .background(Circle().fill(Theme.iconGradient).opacity(0.9))
                 .contentShape(Circle())
-                .liquidGlass(in: Circle(), tint: Theme.tint1.opacity(0.35), interactive: true)
-                .shadow(color: Theme.tint1.opacity(store.isPlaying ? 0.45 : 0.2), radius: store.isPlaying ? 10 : 5)
+                .liquidGlass(in: Circle(), tint: Theme.tint1, interactive: true)
+                .shadow(color: Theme.tint1.opacity(store.isPlaying ? 0.5 : 0.2), radius: store.isPlaying ? 12 : 5)
         }
         .buttonStyle(.plain)
         .focusable(false)
         .keyboardShortcut(.space, modifiers: [])
         .help(store.isPlaying ? "Пауза — пробел или ⌃⌥P" : "Играть — пробел или ⌃⌥P")
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: store.isPlaying)
+    }
+}
+
+/// Soft colored light under the glass, taking the colors of whatever is playing.
+private struct Aurora: View {
+    @EnvironmentObject private var store: MixStore
+
+    var body: some View {
+        let tints = store.active.compactMap { Sound.byID[$0]?.tint }
+        let a = tints.first ?? Theme.tint1
+        let b = tints.dropFirst().first ?? Theme.tint2
+        let c = tints.dropFirst(2).first ?? a
+        ZStack {
+            Circle().fill(a).frame(width: 220).blur(radius: 80).offset(x: -110, y: -260)
+            Circle().fill(b).frame(width: 200).blur(radius: 80).offset(x: 120, y: -150)
+            Circle().fill(c).frame(width: 180).blur(radius: 90).offset(x: -60, y: 260)
+        }
+        .opacity(store.isPlaying && !tints.isEmpty ? 0.32 : 0.12)
+        .animation(.easeInOut(duration: 1.2), value: store.active)
+        .animation(.easeInOut(duration: 0.8), value: store.isPlaying)
+        .allowsHitTesting(false)
     }
 }
 
@@ -256,7 +291,8 @@ private struct SoundRow: View {
         HStack(spacing: 12) {
             Image(systemName: sound.symbol)
                 .font(.system(size: 17, weight: .light))
-                .foregroundStyle(on ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(0.55)))
+                .foregroundStyle(on ? AnyShapeStyle(sound.tint.gradient) : AnyShapeStyle(Color.secondary.opacity(0.55)))
+                .symbolEffect(.bounce, value: on)
                 .symbolEffect(.pulse, options: .repeating, isActive: on && store.isPlaying && sound.category == .noise)
                 .frame(width: 26, height: 26)
 
@@ -403,7 +439,6 @@ enum MenuBuilder {
         }
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("🎲  Случайный микс") { store.randomMix() })
-        menu.addItem(ActionMenuItem("Выключить все звуки", enabled: !store.active.isEmpty) { store.stopAll() })
         return menu
     }
 
@@ -452,9 +487,17 @@ enum MenuBuilder {
 
     private static func showAbout() {
         let credits = NSMutableAttributedString(
+            string: "Автор — Maksim Berezkin\n",
+            attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.labelColor]
+        )
+        credits.append(NSAttributedString(
+            string: "github.com/docomoz/Murmur\n\n",
+            attributes: [.font: NSFont.systemFont(ofSize: 11), .link: URL(string: "https://github.com/docomoz/Murmur")!]
+        ))
+        credits.append(NSAttributedString(
             string: "Звуки природы для фокуса и сна прямо в строке меню.\n⌃⌥P — пауза из любого приложения.\n\n",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.labelColor]
-        )
+        ))
         credits.append(NSAttributedString(
             string: "Записи: библиотека Moodist (github.com/remvze/moodist), Pixabay Content License и CC0. Шумы, тон и сердцебиение синтезируются в реальном времени.",
             attributes: [.font: NSFont.systemFont(ofSize: 10), .foregroundColor: NSColor.secondaryLabelColor]

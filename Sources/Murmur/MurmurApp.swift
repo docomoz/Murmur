@@ -1,66 +1,181 @@
 import AVFoundation
 import AppKit
+import Combine
 import SwiftUI
 
+/// Plain AppKit entry point: a SwiftUI `App` would insist on opening a window of its own.
 @main
-struct MurmurApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    init() {
+enum MurmurMain {
+    @MainActor
+    static func main() {
+        let app = NSApplication.shared
         if CommandLine.arguments.contains("--selftest") {
             SelfTest.run()
             exit(0)
-        }
-        if CommandLine.arguments.contains("--playtest") {
-            SelfTest.playtest()
         }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             SelfTest.snapshot(to: CommandLine.arguments[i + 1])
             exit(0)
         }
-    }
-
-    var body: some Scene {
-        MenuBarExtra {
-            ContentView()
-                .environmentObject(appDelegate.store)
-        } label: {
-            MenuBarLabel(store: appDelegate.store)
+        if CommandLine.arguments.contains("--playtest") {
+            SelfTest.playtest()
         }
-        .menuBarExtraStyle(.window)
+        app.setActivationPolicy(.accessory)
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        app.run()
+        withExtendedLifetime(delegate) {}
     }
 }
 
-/// Murmur lives in the menu bar, but that icon can be invisible: hidden behind the MacBook notch
-/// when the bar is crowded, or switched off in System Settings. So the mixer can also open as a
-/// regular window — on a repeat launch (double-click in Finder/Launchpad) or when the icon isn't
-/// actually on screen.
+/// Owns the menu bar icon and the glass panel that drops down from it.
+///
+/// The icon can be invisible — hidden behind the MacBook notch when the bar is crowded, or switched
+/// off in System Settings — so the mixer also opens as a regular window on the very first launch
+/// and on a repeat launch (double-click in Finder/Launchpad) whenever the panel can't be placed.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let store = MixStore()
+    private var statusItem: NSStatusItem?
+    private var panel: GlassPanel?
     private var window: NSWindow?
+    private var storeObserver: AnyCancellable?
+    private var outsideClickMonitor: Any?
+    private var panelSize = CGSize(width: 292, height: 600)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !SelfTest.isRendering, !CommandLine.arguments.contains("--playtest") else { return }
+
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.button?.target = self
+        item.button?.action = #selector(togglePanel)
+        item.button?.imagePosition = .imageLeading
+        statusItem = item
+        updateStatusItem()
+        storeObserver = store.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.updateStatusItem() }
+        }
+
         let firstLaunch = !UserDefaults.standard.bool(forKey: "launchedBefore")
         UserDefaults.standard.set(true, forKey: "launchedBefore")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-            let visible = Self.statusItemVisible()
-            NSLog("Murmur: status item visible = \(visible)")
-            if firstLaunch || !visible { self?.showWindow() }
+        if CommandLine.arguments.contains("--open-panel") {
+            // Debug: behave as if the menu bar icon was clicked.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in self?.statusItem?.button?.performClick(nil) }
+        }
+        if firstLaunch {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let self else { return }
+                if self.canPlacePanel() { self.showPanel() } else { self.showWindow() }
+            }
         }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showWindow()
+        if canPlacePanel() { showPanel() } else { showWindow() }
         return false
     }
 
+    // MARK: Menu bar icon
+
+    private func updateStatusItem() {
+        guard let button = statusItem?.button else { return }
+        let symbol = store.isPlaying ? "waveform.circle.fill" : "waveform.circle"
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Murmur")
+        image?.isTemplate = true
+        button.image = image
+        if let label = store.timerLabel {
+            button.attributedTitle = NSAttributedString(string: " " + label, attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
+            ])
+        } else {
+            button.title = ""
+        }
+    }
+
+    /// Whether the menu bar icon reports a real on-screen position to hang the panel from.
+    /// On recent macOS the bar is drawn by the system and a hidden icon (notch, Settings) reports
+    /// an off-screen frame — then the mixer opens as a window instead.
+    private func canPlacePanel() -> Bool {
+        guard let item = statusItem, item.isVisible,
+              let window = item.button?.window, let screen = window.screen else { return false }
+        return screen.frame.intersects(window.frame) && window.frame.minY >= screen.frame.minY
+    }
+
+    // MARK: Panel
+
+    @objc private func togglePanel() {
+        if panel?.isVisible == true { closePanel() } else { showPanel(fromClick: true) }
+    }
+
+    /// Drops the panel from the menu bar icon. When the system doesn't report where the icon is,
+    /// a click still tells us: the pointer is on it. Otherwise fall back to the window.
+    func showPanel(fromClick: Bool = false) {
+        let anchorX: CGFloat
+        let screen: NSScreen
+        if canPlacePanel(), let button = statusItem?.button, let buttonWindow = button.window, let s = buttonWindow.screen {
+            anchorX = buttonWindow.convertToScreen(button.convert(button.bounds, to: nil)).midX
+            screen = s
+        } else if fromClick {
+            let mouse = NSEvent.mouseLocation
+            guard let s = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main else { return showWindow() }
+            anchorX = mouse.x
+            screen = s
+        } else {
+            return showWindow()
+        }
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+
+        let size = panelSize
+        let area = screen.visibleFrame
+        let x = min(max(anchorX - size.width / 2, area.minX + 8), area.maxX - size.width - 8)
+        panel.setFrame(NSRect(x: x, y: area.maxY - size.height - 6, width: size.width, height: size.height), display: true)
+        let button = statusItem?.button
+
+        panel.alphaValue = 0
+        panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.16
+            panel.animator().alphaValue = 1
+        }
+        button?.highlight(true)
+
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.closePanel() }
+        }
+    }
+
+    func closePanel() {
+        guard let panel, panel.isVisible else { return }
+        if let monitor = outsideClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickMonitor = nil
+        }
+        statusItem?.button?.highlight(false)
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.12
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            MainActor.assumeIsolated { panel.orderOut(nil) }
+        })
+    }
+
+    private func makePanel() -> GlassPanel {
+        let panel = GlassPanel(contentRect: NSRect(x: 0, y: 0, width: 292, height: 600))
+        let content = GlassHost.make(ContentView().environmentObject(store), cornerRadius: 22)
+        panelSize = content.frame.size
+        panel.contentView = content
+        panel.onClose = { [weak self] in self?.closePanel() }
+        return panel
+    }
+
+    // MARK: Window fallback
+
     func showWindow() {
         if window == nil {
-            let hosting = NSHostingController(rootView: ContentView(inWindow: true).environmentObject(store))
-            let window = NSWindow(contentViewController: hosting)
-            window.styleMask = [.titled, .closable, .miniaturizable, .fullSizeContentView]
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 292, height: 600),
+                                  styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
+                                  backing: .buffered, defer: false)
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
             window.title = "Murmur"
@@ -69,40 +184,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.backgroundColor = .clear
             window.isReleasedWhenClosed = false
             window.delegate = self
+            let content = GlassHost.make(ContentView(inWindow: true).environmentObject(store), cornerRadius: 0)
+            let size = content.frame.size
+            window.contentView = content
+            window.setContentSize(size)
             window.center()
             self.window = window
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
+}
 
-    /// True only if the menu bar icon is really on screen (not switched off, not under the notch).
-    private static func statusItemVisible() -> Bool {
-        let items = NSApp.windows.filter { String(describing: type(of: $0)).contains("StatusBar") }
-        return items.contains { item in
-            guard item.isVisible, item.occlusionState.contains(.visible),
-                  let screen = item.screen ?? NSScreen.main else { return false }
-            let frame = item.frame
-            guard screen.frame.contains(CGPoint(x: frame.midX, y: frame.midY)) else { return false }
-            if let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea {
-                let notch = CGRect(x: left.maxX, y: left.minY, width: right.minX - left.maxX, height: left.height)
-                if notch.insetBy(dx: -4, dy: 0).intersects(frame) { return false }
-            }
-            return true
-        }
+/// Borderless floating panel that can take keyboard focus (space = play/pause) without
+/// activating the app, like system menu bar extras.
+final class GlassPanel: NSPanel {
+    var onClose: (() -> Void)?
+
+    init(contentRect: NSRect) {
+        super.init(contentRect: contentRect, styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
+                   backing: .buffered, defer: true)
+        isFloatingPanel = true
+        level = .statusBar
+        isOpaque = false
+        backgroundColor = .clear
+        hasShadow = true
+        isReleasedWhenClosed = false
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        animationBehavior = .none
+    }
+
+    override var canBecomeKey: Bool { true }
+
+    override func cancelOperation(_ sender: Any?) { onClose?() }
+
+    override func resignKey() {
+        super.resignKey()
+        onClose?()
     }
 }
 
-private struct MenuBarLabel: View {
-    @ObservedObject var store: MixStore
+/// Puts SwiftUI content on real system glass: `NSGlassEffectView` on macOS 26+ (follows the
+/// Liquid Glass look chosen in System Settings), a vibrant menu material before that.
+enum GlassHost {
+    @MainActor
+    static func make<Content: View>(_ content: Content, cornerRadius: CGFloat) -> NSView {
+        let hosting = NSHostingView(rootView: content)
+        hosting.sizingOptions = [.intrinsicContentSize]
+        let size = hosting.fittingSize
 
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: store.isPlaying ? "waveform.circle.fill" : "waveform.circle")
-            if let label = store.timerLabel {
-                Text(label).monospacedDigit()
-            }
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: size))
+            glass.cornerRadius = cornerRadius
+            glass.contentView = hosting
+            return glass
         }
+        let effect = NSVisualEffectView(frame: NSRect(origin: .zero, size: size))
+        effect.material = .menu
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = cornerRadius
+        effect.layer?.masksToBounds = true
+        hosting.frame = effect.bounds
+        hosting.autoresizingMask = [.width, .height]
+        effect.addSubview(hosting)
+        return effect
     }
 }
 

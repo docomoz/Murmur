@@ -24,6 +24,7 @@ cp -R build/Murmur.app /Applications/       # установить
 build/Murmur.app/Contents/MacOS/Murmur --selftest          # отрендерить 150 с каждого звука: RMS, пик, NaN и «repeat» (повторяемость)
 build/Murmur.app/Contents/MacOS/Murmur --playtest          # реально проиграть все пресеты и замерить уровень на выходе
 build/Murmur.app/Contents/MacOS/Murmur --snapshot preview  # отрендерить окно в preview-light.png / preview-dark.png
+open build/Murmur.app --args --open-panel                   # запустить и сразу открыть панель (как клик по значку)
 ```
 
 `--playtest` реально играет звук. Перед ним удобно приглушить: `defaults write app.murmur.mac master -float 0.05`, потом вернуть `0.8`.
@@ -55,7 +56,7 @@ build/Murmur.app/Contents/MacOS/Murmur --snapshot preview  # отрендери�
 Package.swift                 SwiftPM, executable target "Murmur", macOS 14
 build.sh                      сборка: 2 арх → lipo → .app → иконка → Info.plist → ad-hoc подпись → DMG
 Sources/Murmur/
-  MurmurApp.swift             @main, MenuBarExtra, AppDelegate (окно-фолбэк), SelfTest (--selftest/--playtest/--snapshot)
+  MurmurApp.swift             @main (чистый AppKit), AppDelegate: NSStatusItem + GlassPanel, окно-фолбэк, GlassHost; SelfTest
   Sound.swift                 модель звука и каталог Sound.all (28 шт.), категории, Color(hex:)
   AudioEngine.swift           AVAudioEngine-граф, каналы с плавной громкостью, NoiseGenerator (шумы/тоны), LoopBuilder (петля часов + общие хелперы)
   Texture.swift               гранулярный движок: TextureGenerator / GrainLayer, HeartbeatGenerator, SourceLoader, FastRandom
@@ -104,20 +105,22 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 
 ### UI (`Views.swift`)
 Структура: шапка → пресеты → список звуков со слайдерами → футер; стиль macOS 26/27 **Liquid Glass**:
-- ширина 292; фон панели не задаём — системное стекло MenuBarExtra (в оконном режиме — `PanelBackdrop`, `NSVisualEffectView`). Цвета семантические (`.primary/.secondary`), чтобы работала вибрация на стекле;
+- ширина 292; фон панели не задаём — им служит `NSGlassEffectView` из `GlassHost`. Цвета семантические (`.primary/.secondary`), чтобы работала вибрация на стекле;
 - `liquidGlass(in:tint:interactive:)` — `glassEffect(Glass.regular.tint(..).interactive())` на macOS 26+, матовый материал на 14–15; `GlassGroup` = `GlassEffectContainer`;
-- шапка: стеклянные круглые кнопки «☰ все миксы» и «⚙», в центре большая Play с бирюзовым градиентом (`#49EEC8 → #52D2F0`);
+- шапка: стеклянные круглые кнопки «☰ все миксы» и «⚙»; в центре блок **Stop (38 pt) + Play (50 pt)** — стоят вплотную внутри `GlassEffectContainer`, поэтому стекло сливается в одну форму. Play — стекло, тонированное бирюзой (`#49EEC8`), без непрозрачной заливки, чтобы уважать системную настройку стекла;
+- `Aurora` — мягкое цветное свечение под стеклом в цветах играющих звуков; иконки активных звуков окрашены `sound.tint.gradient`;
 - **полоса популярных пресетов** под шапкой: Кафе / Фокус / Костёр / Море + 🎲 «Наугад» (стеклянные плитки, выбранная подкрашена). Полный список, свои миксы, сохранение/удаление — в меню ☰;
 - компактный список: строка 44 pt, иконка 17 pt light, название 12.5 pt, `LineSlider` — трек 2.5 pt, риска 3×11;
 - футер: стеклянная «пилюля» «Таймер сна» + общая громкость;
 - фокус-рамки отключены (`.focusEffectDisabled()`, `.focusable(false)` на кнопках);
 - меню — нативные `NSMenu` через `MenuBuilder.popUp`. Сохранение микса — `NSAlert` с текстовым полем.
 
-### Окно-фолбэк (`AppDelegate` в `MurmurApp.swift`)
-Иконку в строке меню могут скрыть «чёлка» MacBook или «Системные настройки → Строка меню». Поэтому микшер открывается и обычным окном (`ContentView(inWindow: true)`, сверху тёмная полоса 28 pt под «светофор»):
-- при первом запуске;
-- при повторном открытии уже запущенного приложения (`applicationShouldHandleReopen`);
-- если `statusItemVisible()` решила, что значок не на экране. В macOS 27 окна статус-айтема не видны процессу, поэтому эвристика, вероятно, всегда даёт `false` → окно открывается при каждом запуске (включая автозапуск). Это известный компромисс, см. TODO.
+### Строка меню и панель (`MurmurApp.swift`)
+- Точка входа — `MurmurMain` (чистый AppKit, `.accessory`). **SwiftUI `App` не используется**: со сценой `Settings` он сам открывал пустое окно 900×450 при каждом запуске, а `MenuBarExtra` даёт непрозрачное серое окно, которое нельзя сделать стеклянным.
+- Значок — `NSStatusItem` (иконка `waveform.circle(.fill)` + отсчёт таймера), обновляется по `store.objectWillChange`.
+- Панель — `GlassPanel` (`NSPanel`, borderless + nonactivating, может быть key → работает пробел). Контент — `GlassHost.make`: SwiftUI в `NSHostingView` внутри **`NSGlassEffectView`** (macOS 26+; следует системной настройке Liquid Glass «прозрачное/тонированное»), до 26 — `NSVisualEffectView(.menu)`. Закрывается по клику снаружи (global monitor), Esc, потере фокуса.
+- **Грабли macOS 27:** строку меню рисует система; окно статус-айтема в нашем процессе — заглушка с фреймом `(0, -33, 32, 33)`, `screen == nil`. Поэтому: при клике по значку панель позиционируется по курсору (`showPanel(fromClick: true)`); если координат нет и это не клик — открывается окно-фолбэк.
+- Окно-фолбэк (`showWindow`, `ContentView(inWindow: true)`, стекло без скруглений): при самом первом запуске и при повторном открытии приложения (двойной клик), если панель не к чему привязать.
 
 ---
 
@@ -166,7 +169,7 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 
 - `build.sh` подписывает ad-hoc (`codesign -s -`). Без сертификата Apple Developer ($99/год) у друзей Gatekeeper ругнётся при первом запуске: «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть» или `xattr -dr com.apple.quarantine /Applications/Murmur.app`. Это описано в `README-друзьям.txt`.
 - Для нормального распространения: Developer ID подпись + `xcrun notarytool` (нужен Xcode/аккаунт).
-- Версия задаётся в `build.sh` (`VERSION="1.0"`).
+- Версия задаётся в `build.sh` (`VERSION`, `CFBundleVersion`). Автор: Maksim Berezkin (в «О программе», копирайте и LICENSE).
 
 ---
 
