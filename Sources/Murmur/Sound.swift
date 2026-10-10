@@ -9,8 +9,8 @@ enum SoundSource: Hashable {
 enum SoundCategory: String, CaseIterable, Identifiable {
     case water = "Дождь и вода"
     case nature = "Природа"
-    case city = "Город и дорога"
-    case rhythm = "Дом и ритм"
+    case city = "Город"
+    case rhythm = "Дом"
     case noise = "Шум"
 
     var id: String { rawValue }
@@ -70,10 +70,6 @@ extension Sound {
     static let all: [Sound] = [
         // Дождь и вода
         Sound(id: "rain", name: "Дождь", symbol: "cloud.rain", category: .water, tint: Color(hex: 0x4F8EF7), source: .file("rain")),
-        Sound(id: "heavyrain", name: "Ливень", symbol: "cloud.heavyrain", category: .water, tint: Color(hex: 0x3D63DD), source: .file("heavyrain"),
-              layers: [Layer(length: 3...7, fade: 1.5, rate: 0.97...1.03)]),
-        Sound(id: "window", name: "Дождь в окно", symbol: "window.vertical.closed", category: .water, tint: Color(hex: 0x5BA4F5), source: .file("window"),
-              layers: [Layer(length: 4...9, fade: 2, rate: 0.98...1.02)]),
         Sound(id: "storm", name: "Гроза", symbol: "cloud.bolt.rain", category: .water, tint: Color(hex: 0x7C6CF2), source: .file("storm"),
               layers: [Layer(length: 6...14, fade: 3, rate: 0.95...1.05),
                        // Distant rolls of thunder: lower, quieter, now and then.
@@ -81,21 +77,15 @@ extension Sound {
         Sound(id: "waves", name: "Морской прибой", symbol: "water.waves", category: .water, tint: Color(hex: 0x14A9D6), source: .file("waves"),
               layers: [Layer(length: 8...16, fade: 3, rate: 0.97...1.03)]),
         Sound(id: "river", name: "Ручей", symbol: "drop", category: .water, tint: Color(hex: 0x1FBFB0), source: .file("river")),
-        Sound(id: "waterfall", name: "Водопад", symbol: "humidity", category: .water, tint: Color(hex: 0x2B9CC9), source: .file("waterfall"),
-              layers: [Layer(length: 3...7, fade: 1.5, rate: 0.97...1.03)]),
-        Sound(id: "tent", name: "Дождь по палатке", symbol: "tent", category: .water, tint: Color(hex: 0x5E9C76), source: .file("tent"),
-              layers: [Layer(length: 6...12, rate: 0.98...1.02)]),
         Sound(id: "underwater", name: "Под водой", symbol: "bubbles.and.sparkles", category: .water, tint: Color(hex: 0x2F7FD0), source: .file("underwater"),
               layers: [Layer(length: 8...16, fade: 3, rate: 0.97...1.03)]),
 
         // Природа
         Sound(id: "campfire", name: "Костёр", symbol: "flame", category: .nature, tint: Color(hex: 0xFF7438), source: .file("campfire"), boost: 1.8,
               layers: [Layer(length: 6...14, rate: 0.97...1.03)]),
-        Sound(id: "wind", name: "Зимний ветер", symbol: "wind.snow", category: .nature, tint: Color(hex: 0x7FA7C4), source: .file("wind"),
+        Sound(id: "wind", name: "Ветер", symbol: "wind.snow", category: .nature, tint: Color(hex: 0x7FA7C4), source: .file("wind"),
               layers: [Layer(length: 6...14, fade: 3.5, rate: 0.95...1.05)]),
-        Sound(id: "trees", name: "Ветер в листве", symbol: "leaf", category: .nature, tint: Color(hex: 0x3FBF68), source: .file("trees"),
-              layers: [Layer(length: 5...12, rate: 0.96...1.04)]),
-        Sound(id: "birds", name: "Птицы в парке", symbol: "bird", category: .nature, tint: Color(hex: 0x8DC63F), source: .file("birds"),
+        Sound(id: "birds", name: "Птицы", symbol: "bird", category: .nature, tint: Color(hex: 0x8DC63F), source: .file("birds"),
               layers: [Layer(length: 6...14, rate: 0.97...1.03),
                        // A few more birds, singing from different sides.
                        Layer(length: 3...7, fade: 1.5, rate: 1.0...1.08, gainDB: -6, pan: 0.7, gap: 3...12)]),
@@ -107,32 +97,18 @@ extension Sound {
                        Layer(length: 4...9, fade: 2, rate: 0.78...0.9, gainDB: -7, pan: 0.8, gap: 2...10),
                        // The ocean itself, so there is never dead silence between songs.
                        Layer(file: "underwater", length: 8...16, fade: 3, rate: 0.97...1.03, gainDB: -9)]),
-        Sound(id: "frog", name: "Лягушки", symbol: "lizard", category: .nature, tint: Color(hex: 0x58B05A), source: .file("frog"),
-              layers: [Layer(length: 5...12, rate: 0.97...1.03)]),
-        Sound(id: "jungle", name: "Джунгли", symbol: "tree", category: .nature, tint: Color(hex: 0x2FA05A), source: .file("jungle"),
-              layers: [Layer(length: 8...16, rate: 0.98...1.02)]),
-        Sound(id: "seagulls", name: "Чайки у моря", symbol: "beach.umbrella", category: .nature, tint: Color(hex: 0x3BB3D6), source: .file("seagulls"),
-              layers: [Layer(length: 4...9, fade: 2, rate: 0.97...1.03)]),
-        Sound(id: "village", name: "Ночная деревня", symbol: "house", category: .nature, tint: Color(hex: 0x7468C8), source: .file("village"),
-              layers: [Layer(length: 8...16, rate: 0.98...1.02)]),
 
         // Город и дорога
         Sound(id: "city", name: "Улица", symbol: "building.2", category: .city, tint: Color(hex: 0xF0A030), source: .file("city")),
         Sound(id: "cafe", name: "Кафе", symbol: "cup.and.saucer", category: .city, tint: Color(hex: 0xC27C48), source: .file("cafe"),
               layers: [Layer(length: 8...16, rate: 0.99...1.01)]),
-        Sound(id: "subway", name: "Метро", symbol: "tram", category: .city, tint: Color(hex: 0xE5534B), source: .file("subway")),
-        Sound(id: "train", name: "В поезде", symbol: "lightrail", category: .city, tint: Color(hex: 0xD9663F), source: .file("train"),
+        Sound(id: "train", name: "Поезд", symbol: "lightrail", category: .city, tint: Color(hex: 0xD9663F), source: .file("train"),
               layers: [Layer(length: 6...12, fade: 2)]),
-        Sound(id: "sailboat", name: "Парусник", symbol: "sailboat", category: .city, tint: Color(hex: 0x3398D6), source: .file("sailboat")),
-        Sound(id: "airplane", name: "В самолёте", symbol: "airplane", category: .city, tint: Color(hex: 0x6E8FB8), source: .file("airplane"),
-              layers: [Layer(length: 6...12, rate: 0.985...1.015)]),
         Sound(id: "library", name: "Библиотека", symbol: "books.vertical", category: .city, tint: Color(hex: 0xA6774E), source: .file("library")),
 
         // Ритм
         Sound(id: "keyboard", name: "Клавиатура", symbol: "keyboard", category: .rhythm, tint: Color(hex: 0x8A8AA3), source: .file("keyboard"), defaultVolume: 0.45,
               layers: [Layer(length: 1...3, fade: 0.12, rate: 0.97...1.03, gainJitterDB: 2)]),
-        Sound(id: "typewriter", name: "Печатная машинка", symbol: "doc.text", category: .rhythm, tint: Color(hex: 0x9C8468), source: .file("typewriter"), defaultVolume: 0.45,
-              layers: [Layer(length: 1.5...4, fade: 0.15, rate: 0.98...1.02)]),
         Sound(id: "clock", name: "Часы", symbol: "clock", category: .rhythm, tint: Color(hex: 0xB89B62), source: .file("clock"),
               crossfade: 0.03, region: LoopRegion(start: 0.45, length: 15.005), defaultVolume: 0.4),
         Sound(id: "heartbeat", name: "Сердцебиение", symbol: "heart", category: .rhythm, tint: Color(hex: 0xEF4B6C), source: .heartbeat, defaultVolume: 0.5),
@@ -140,14 +116,9 @@ extension Sound {
               layers: [Layer(length: 3...7, fade: 1, rate: 0.98...1.02)]),
         Sound(id: "vinyl", name: "Виниловая пластинка", symbol: "opticaldisc", category: .rhythm, tint: Color(hex: 0xB0656E), source: .file("vinyl"), defaultVolume: 0.45,
               layers: [Layer(length: 4...9, fade: 1.5, rate: 0.99...1.01)]),
-        Sound(id: "fan", name: "Вентилятор", symbol: "fan.ceiling", category: .rhythm, tint: Color(hex: 0x7FA0B0), source: .file("fan"),
-              layers: [Layer(length: 2...5, fade: 1.2, rate: 0.98...1.02)]),
         Sound(id: "bowl", name: "Поющая чаша", symbol: "bell", category: .rhythm, tint: Color(hex: 0xD4A040), source: .file("bowl"), defaultVolume: 0.45,
               // Each strike is a different bowl: new pitch, new side, ringing over the last one.
               layers: [Layer(rate: 0.94...1.06, gainDB: -4, gainJitterDB: 2, pan: 0.5, events: 12...24)]),
-        Sound(id: "chimes", name: "Колокольчики", symbol: "sparkles", category: .rhythm, tint: Color(hex: 0xB98AF0), source: .file("chimes"), defaultVolume: 0.4,
-              layers: [Layer(length: 5...12, fade: 3, rate: 0.995...1.005),
-                       Layer(length: 4...8, fade: 2.5, rate: 0.995...1.005, gainDB: -7, pan: 0.7, gap: 4...14)]),
 
         // Шум — генерируется в реальном времени и никогда не повторяется
         Sound(id: "white", name: "Белый шум", symbol: "waveform", category: .noise, tint: Color(hex: 0x8F9AB3), source: .whiteNoise, defaultVolume: 0.35),

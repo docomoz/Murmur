@@ -2,17 +2,30 @@ import AppKit
 import SwiftUI
 
 enum Theme {
-    static let tint1 = Color(hex: 0x49EEC8)
-    static let tint2 = Color(hex: 0x52D2F0)
-    static let gradient = LinearGradient(colors: [tint1, tint2], startPoint: .leading, endPoint: .trailing)
-    static let iconGradient = LinearGradient(colors: [tint1, tint2], startPoint: .top, endPoint: .bottom)
-    static let link = Color(light: 0x0FA58F, dark: 0x3DD9BE)
+    /// Set by `MixStore`; views re-render on store changes and pick the new colors up.
+    nonisolated(unsafe) static var accent: AccentChoice = .system
 
-    // Semantic, vibrancy-friendly colors: the panel itself is glass, so nothing here is opaque.
-    static let track = Color.primary.opacity(0.10)
-    static let fillOff = Color.primary.opacity(0.22)
-    static let thumbOff = Color.primary.opacity(0.32)
-    static let hover = Color.primary.opacity(0.06)
+    static var tint1: Color { Color(nsColor: accent.colors.0) }
+    static var tint2: Color { Color(nsColor: accent.colors.1) }
+    static var gradient: LinearGradient { LinearGradient(colors: [tint1, tint2], startPoint: .leading, endPoint: .trailing) }
+    static var iconGradient: LinearGradient { LinearGradient(colors: [tint1, tint2], startPoint: .top, endPoint: .bottom) }
+    /// Accent for text on glass: a touch darker in light mode so it stays readable.
+    static var link: Color {
+        let base = accent.colors.0
+        return Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+                ? (base.blended(withFraction: 0.2, of: .white) ?? base)
+                : (base.blended(withFraction: 0.25, of: .black) ?? base)
+        })
+    }
+
+    // Semantic colors that follow light/dark. Dimmed (off) items stay clearly readable on light glass.
+    static let dimText = Color(light: 0x4A4F57, dark: 0xB4BAC2)
+    static let dimIcon = Color(light: 0x5F656E, dark: 0x9EA5AE)
+    static let track = Color(light: 0xC9CED4, dark: 0x4A4F56)
+    static let fillOff = Color(light: 0x8D939B, dark: 0x8A9098)
+    static let thumbOff = Color(light: 0x6F757E, dark: 0xA3A9B1)
+    static let hover = Color.primary.opacity(0.07)
 }
 
 extension Color {
@@ -263,7 +276,7 @@ private struct PresetTile: View {
                 Text(emoji).font(.system(size: 15))
                 Text(title)
                     .font(.system(size: 9.5, weight: .semibold))
-                    .foregroundStyle(selected ? Color.primary : Color.secondary)
+                    .foregroundStyle(selected ? Color.white : Theme.dimText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -293,7 +306,7 @@ private struct SoundRow: View {
         HStack(spacing: 12) {
             Image(systemName: sound.symbol)
                 .font(.system(size: 17, weight: .light))
-                .foregroundStyle(on ? AnyShapeStyle(sound.tint.gradient) : AnyShapeStyle(Color.secondary.opacity(0.55)))
+                .foregroundStyle(on ? AnyShapeStyle(sound.tint.gradient) : AnyShapeStyle(Theme.dimIcon))
                 .symbolEffect(.bounce, value: on)
                 .symbolEffect(.pulse, options: .repeating, isActive: on && store.isPlaying && sound.category == .noise)
                 .frame(width: 26, height: 26)
@@ -301,7 +314,7 @@ private struct SoundRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(sound.name)
                     .font(.system(size: 12.5, weight: on ? .semibold : .medium))
-                    .foregroundStyle(on ? Color.primary : Color.secondary)
+                    .foregroundStyle(on ? Color.primary : Theme.dimText)
                     .lineLimit(1)
                 LineSlider(
                     value: Binding(get: { store.volume(sound) }, set: { store.setVolume(sound, $0) }),
@@ -393,12 +406,12 @@ private struct FooterView: View {
 
             Image(systemName: "speaker.fill")
                 .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.dimIcon)
             LineSlider(value: Binding(get: { store.master }, set: { store.setMaster($0) }), on: true)
                 .frame(width: 84)
             Image(systemName: "speaker.wave.3.fill")
                 .font(.system(size: 9))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Theme.dimIcon)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -477,6 +490,15 @@ enum MenuBuilder {
         }
         menu.addItem(backdrop)
 
+        let accent = NSMenuItem(title: "Акцент", action: nil, keyEquivalent: "")
+        accent.submenu = NSMenu()
+        for option in AccentChoice.allCases {
+            let item = ActionMenuItem(option.title, checked: store.accent == option) { store.accent = option }
+            item.image = swatch(option.colors.0, option.colors.1)
+            accent.submenu?.addItem(item)
+        }
+        menu.addItem(accent)
+
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem("Открывать при входе в систему", checked: store.launchAtLogin) {
             store.setLaunchAtLogin(!store.launchAtLogin)
@@ -485,6 +507,14 @@ enum MenuBuilder {
         menu.addItem(ActionMenuItem("О Murmur") { (NSApp.delegate as? AppDelegate)?.showAbout() })
         menu.addItem(ActionMenuItem("Выйти из Murmur") { NSApp.terminate(nil) })
         return menu
+    }
+
+    /// Small round color swatch for the Accent menu.
+    private static func swatch(_ a: NSColor, _ b: NSColor) -> NSImage {
+        NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+            NSGradient(starting: a, ending: b)?.draw(in: NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)), angle: -90)
+            return true
+        }
     }
 
     private static func promptSave(_ store: MixStore) {

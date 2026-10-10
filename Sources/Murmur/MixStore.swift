@@ -11,13 +11,13 @@ struct Mix: Codable, Identifiable, Hashable {
     var builtIn = false
 
     static let presets: [Mix] = [
-        Mix(id: "b.cafe", name: "Дождливое кафе", emoji: "☕️", levels: ["rain": 0.55, "cafe": 0.5, "window": 0.3], builtIn: true),
+        Mix(id: "b.cafe", name: "Дождливое кафе", emoji: "☕️", levels: ["rain": 0.55, "cafe": 0.5, "vinyl": 0.15], builtIn: true),
         Mix(id: "b.focus", name: "Фокус", emoji: "🎧", levels: ["white": 0.3, "rain": 0.45, "keyboard": 0.15], builtIn: true),
         Mix(id: "b.fire", name: "У костра", emoji: "🔥", levels: ["campfire": 0.7, "crickets": 0.35, "wind": 0.2], builtIn: true),
-        Mix(id: "b.sea", name: "Море", emoji: "🌊", levels: ["waves": 0.7, "seagulls": 0.25, "trees": 0.15], builtIn: true),
-        Mix(id: "b.storm", name: "Гроза", emoji: "⛈️", levels: ["storm": 0.6, "heavyrain": 0.45, "trees": 0.3], builtIn: true),
-        Mix(id: "b.train", name: "Ночной поезд", emoji: "🚆", levels: ["train": 0.6, "window": 0.35, "heartbeat": 0.15], builtIn: true),
-        Mix(id: "b.library", name: "Библиотека", emoji: "📚", levels: ["library": 0.5, "clock": 0.3, "typewriter": 0.2, "rain": 0.25], builtIn: true),
+        Mix(id: "b.sea", name: "Море", emoji: "🌊", levels: ["waves": 0.7, "wind": 0.2], builtIn: true),
+        Mix(id: "b.storm", name: "Гроза", emoji: "⛈️", levels: ["storm": 0.6, "rain": 0.5, "wind": 0.25], builtIn: true),
+        Mix(id: "b.train", name: "Ночной поезд", emoji: "🚆", levels: ["train": 0.6, "rain": 0.3, "heartbeat": 0.15], builtIn: true),
+        Mix(id: "b.library", name: "Библиотека", emoji: "📚", levels: ["library": 0.5, "clock": 0.3, "keyboard": 0.15, "rain": 0.25], builtIn: true),
     ]
 }
 
@@ -49,6 +49,39 @@ enum PanelBackdrop: String, CaseIterable {
     }
 }
 
+/// Accent color of the controls: Play, sliders, selected preset, links.
+enum AccentChoice: String, CaseIterable {
+    case system, lavender, coral, amber, rose, graphite
+
+    var title: String {
+        switch self {
+        case .system: "Как в системе"
+        case .lavender: "Лаванда"
+        case .coral: "Коралл"
+        case .amber: "Янтарь"
+        case .rose: "Роза"
+        case .graphite: "Графит"
+        }
+    }
+
+    /// Gradient pair (top/leading → bottom/trailing).
+    var colors: (NSColor, NSColor) {
+        func hex(_ v: UInt32) -> NSColor {
+            NSColor(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255, blue: CGFloat(v & 0xFF) / 255, alpha: 1)
+        }
+        switch self {
+        case .system:
+            let accent = NSColor.controlAccentColor
+            return (accent, accent.blended(withFraction: 0.35, of: .white) ?? accent)
+        case .lavender: return (hex(0x8B6CFF), hex(0xB49BFF))
+        case .coral: return (hex(0xFF6B5E), hex(0xFF9A76))
+        case .amber: return (hex(0xF59E0B), hex(0xFBBF57))
+        case .rose: return (hex(0xF0508C), hex(0xFF85B3))
+        case .graphite: return (hex(0x5B6270), hex(0x8A93A3))
+        }
+    }
+}
+
 @MainActor
 final class MixStore: ObservableObject {
     @Published private(set) var active: [String]
@@ -63,6 +96,12 @@ final class MixStore: ObservableObject {
     }
     @Published var backdrop: PanelBackdrop {
         didSet { defaults.set(backdrop.rawValue, forKey: "backdrop") }
+    }
+    @Published var accent: AccentChoice {
+        didSet {
+            defaults.set(accent.rawValue, forKey: "accent")
+            Theme.accent = accent
+        }
     }
 
     private let audio = AudioEngine()
@@ -82,6 +121,9 @@ final class MixStore: ObservableObject {
         master = defaults.object(forKey: "master") as? Double ?? 0.8
         theme = PanelTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
         backdrop = PanelBackdrop(rawValue: defaults.string(forKey: "backdrop") ?? "") ?? .system
+        let savedAccent = AccentChoice(rawValue: defaults.string(forKey: "accent") ?? "") ?? .system
+        accent = savedAccent
+        Theme.accent = savedAccent
         if let data = defaults.data(forKey: "userMixes"), let mixes = try? JSONDecoder().decode([Mix].self, from: data) {
             userMixes = mixes
         } else {

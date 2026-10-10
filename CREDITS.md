@@ -8,36 +8,21 @@
 | Звук в Murmur      | Файл Moodist                    |
 |--------------------|---------------------------------|
 | Дождь              | rain/light-rain.mp3             |
-| Ливень             | rain/heavy-rain.mp3             |
-| Дождь в окно       | rain/rain-on-window.mp3         |
 | Гроза              | rain/thunder.mp3                |
 | Морской прибой     | nature/waves.mp3                |
 | Ручей              | nature/river.mp3                |
-| Водопад            | nature/waterfall.mp3            |
 | Костёр             | nature/campfire.mp3             |
-| Зимний ветер       | nature/wind.mp3                 |
-| Ветер в листве     | nature/wind-in-trees.mp3        |
-| Птицы в парке      | animals/birds.mp3               |
+| Ветер              | nature/wind.mp3                 |
+| Птицы              | animals/birds.mp3               |
 | Сверчки            | animals/crickets.mp3            |
 | Киты               | animals/whale.mp3 + places/underwater.mp3 |
 | Улица              | urban/busy-street.mp3           |
 | Кафе               | places/cafe.mp3                 |
-| Метро              | places/subway-station.mp3       |
-| В поезде           | transport/inside-a-train.mp3    |
-| Парусник           | transport/sailboat.mp3          |
+| Поезд              | transport/inside-a-train.mp3    |
 | Библиотека         | places/library.mp3              |
 | Клавиатура         | things/keyboard.mp3             |
-| Печатная машинка   | things/typewriter.mp3           |
 | Часы               | things/clock.mp3                |
-| Колокольчики       | things/wind-chimes.mp3          |
-| Дождь по палатке   | rain/rain-on-tent.mp3           |
 | Под водой          | places/underwater.mp3           |
-| Лягушки            | animals/frog.mp3                |
-| Джунгли            | nature/jungle.mp3               |
-| Чайки у моря       | animals/seagulls.mp3            |
-| Ночная деревня     | places/night-village.mp3        |
-| В самолёте         | transport/airplane.mp3          |
 | Мурлыканье кота    | animals/cat-purring.mp3         |
 | Виниловая пластинка| things/vinyl-effect.mp3         |
-| Вентилятор         | things/ceiling-fan.mp3          |
 | Поющая чаша        | things/singing-bowl.mp3         |

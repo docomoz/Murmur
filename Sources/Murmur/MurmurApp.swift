@@ -303,7 +303,7 @@ final class GlassPanel: NSPanel {
         level = .statusBar
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false   // the window is bigger than the glass; the glass draws its own shadow
+        hasShadow = false   // the window is bigger than the glass; Liquid Glass draws its own rim
         isReleasedWhenClosed = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         animationBehavior = .none
@@ -334,8 +334,8 @@ final class GlassPanel: NSPanel {
 enum GlassHost {
     static let panelRadius: CGFloat = 22
     /// Transparent room around the glass inside the panel window. Liquid Glass draws its rim light
-    /// and shadow slightly outside its shape; if the window ended right at the glass edge those
-    /// effects were cut off by the window rectangle and showed up as dark lines in the corners.
+    /// slightly outside its shape; if the window ended right at the glass edge that was cut off by
+    /// the window rectangle and showed up as dark lines in the corners. No extra shadow is added.
     static let margin: CGFloat = 22
 
     /// Backdrop styles: plain system glass, or tinted by the mix.
@@ -360,7 +360,6 @@ enum GlassHost {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: size.width + 2 * margin, height: size.height + 2 * margin))
         container.wantsLayer = true
         container.layer?.backgroundColor = .clear
-        container.addSubview(shadowView(for: glassFrame, bounds: container.bounds))
 
         if #available(macOS 26.0, *) {
             let glass = NSGlassEffectView(frame: glassFrame)
@@ -382,30 +381,6 @@ enum GlassHost {
             container.addSubview(effect)
         }
         return container
-    }
-
-    /// A soft drop shadow that exists only outside the rounded glass (masked out underneath it,
-    /// so it never darkens the see-through glass).
-    @MainActor
-    private static func shadowView(for glassFrame: NSRect, bounds: NSRect) -> NSView {
-        let view = NSView(frame: bounds)
-        view.wantsLayer = true
-        guard let layer = view.layer else { return view }
-        let shape = CGPath(roundedRect: glassFrame, cornerWidth: panelRadius, cornerHeight: panelRadius, transform: nil)
-        layer.shadowPath = shape
-        layer.shadowColor = NSColor.black.cgColor
-        layer.shadowOpacity = 0.28
-        layer.shadowRadius = 12
-        layer.shadowOffset = CGSize(width: 0, height: -5)
-
-        let mask = CAShapeLayer()
-        let outside = CGMutablePath()
-        outside.addRect(bounds)
-        outside.addPath(shape)
-        mask.path = outside
-        mask.fillRule = .evenOdd
-        layer.mask = mask
-        return view
     }
 }
 

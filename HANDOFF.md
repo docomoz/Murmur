@@ -62,7 +62,7 @@ Sources/Murmur/
   Texture.swift               гранулярный движок: TextureGenerator / GrainLayer, HeartbeatGenerator, SourceLoader, FastRandom
   MixStore.swift              состояние (ObservableObject): активные звуки, громкости, пресеты, таймер сна, хоткей, автозапуск
   Views.swift                 весь UI (панель, ленты, строки, слайдеры) + нативные NSMenu (MenuBuilder, ActionMenuItem)
-Resources/Sounds/*.mp3        34 записи (≈55 МБ), копируются в .app/Contents/Resources/Sounds
+Resources/Sounds/*.mp3        19 записей (≈34 МБ), копируются в .app/Contents/Resources/Sounds
 Resources/icon-1024.png       иконка (генерируется scripts/make_icon.swift)
 scripts/make_icon.swift       рисует иконку кодом: `swift scripts/make_icon.swift Resources/icon-1024.png`
 CREDITS.md                    источники и лицензии звуков (кладётся в бандл)
@@ -108,7 +108,7 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 Структура: шапка → пресеты → список звуков со слайдерами → футер; стиль macOS 26/27 **Liquid Glass**:
 - ширина 292; фон панели не задаём — им служит `NSGlassEffectView` из `GlassHost.makePanelContent`. Цвета семантические (`.primary/.secondary`), чтобы работала вибрация на стекле;
 - `liquidGlass(in:tint:interactive:)` — `glassEffect(Glass.regular.tint(..).interactive())` на macOS 26+, матовый материал на 14–15; `GlassGroup` = `GlassEffectContainer`;
-- шапка: стеклянные круглые кнопки «☰ все миксы» и «⚙»; в центре блок **Stop (38 pt) + Play (50 pt)** — стоят вплотную внутри `GlassEffectContainer`, поэтому стекло сливается в одну форму. Play — стекло, тонированное бирюзой (`#49EEC8`), без непрозрачной заливки, чтобы уважать системную настройку стекла;
+- шапка: стеклянные круглые кнопки «☰ все миксы» и «⚙»; в центре блок **Stop (38 pt) + Play (50 pt)** — стоят вплотную внутри `GlassEffectContainer`, поэтому стекло сливается в одну форму. Play — стекло, тонированное акцентным цветом, без непрозрачной заливки, чтобы уважать системную настройку стекла;
 - `Aurora` — мягкое цветное свечение в цветах играющих звуков, только при подложке «В цветах микса»; иконки активных звуков окрашены `sound.tint.gradient`;
 - **полоса популярных пресетов** под шапкой: Кафе / Фокус / Костёр / Море + 🎲 «Наугад» (стеклянные плитки, выбранная подкрашена). Полный список, свои миксы, сохранение/удаление — в меню ☰;
 - компактный список: строка 44 pt, иконка 17 pt light, название 12.5 pt, `LineSlider` — трек 2.5 pt, риска 3×11;
@@ -119,9 +119,11 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 ### Строка меню и панель (`MurmurApp.swift`)
 - Точка входа — `MurmurMain` (чистый AppKit, `.accessory`). **SwiftUI `App` не используется**: со сценой `Settings` он сам открывал пустое окно 900×450 при каждом запуске, а `MenuBarExtra` даёт непрозрачное серое окно, которое нельзя сделать стеклянным.
 - Значок — `NSStatusItem` с иконкой `StatusIcon` (рисуется кодом: кружок + 4 полоски, template). Пока играет звук, полоски мягко покачиваются (таймер 12 fps, амплитуда ±20 %); на паузе таймер остановлен. Рядом — отсчёт таймера сна.
+- **Акцент** (меню ⚙ → Акцент, `AccentChoice`): «как в системе» (`NSColor.controlAccentColor`, по умолчанию), лаванда, коралл, янтарь, роза, графит. `Theme.tint1/tint2/gradient/link` — вычисляемые, читают `Theme.accent`, который выставляет `MixStore`. Бирюза `#49EEC8` из ранних версий автору не понравилась — не возвращать.
+- Контраст: выключенные строки — `Theme.dimText/dimIcon` (тёмно-серые в светлой теме, светло-серые в тёмной), а не `.secondary` — тот на светлом стекле нечитаем.
 - Настройки внешнего вида (меню ⚙): **Тема** (как в системе / светлая / тёмная → `window.appearance`) и **Подложка** (`PanelBackdrop`): системная (`NSGlassEffectView.style = .regular`, без оттенка) или в цветах микса (оттенок первого звука + `Aurora`). Режимы «прозрачная» (`.clear`) и «матовая» были в 1.2 и удалены — выглядели плохо. Хранятся в UserDefaults `theme`/`backdrop`, применяются `AppDelegate.applyAppearance()` ко всем стеклянным окнам.
 - «О Murmur» — своё окно (`AboutView`, обычное системное окно без стекла): иконка, версия, ссылка на GitHub, описание, лицензии, «© 2026 Maksim Berezkin».
-- **Грабли со скруглёнными углами (важно):** Liquid Glass рисует световую кромку и тень чуть за пределами своей формы. Если окно заканчивается ровно по краю стекла, эти эффекты обрезаются прямоугольником окна → тёмные линии/«квадратные уголки» по краям (особенно в тёмной теме и снизу). Решение (`GlassHost.makePanelContent`): окно панели на `GlassHost.margin` = 22 pt больше стекла с каждой стороны, прозрачное, `hasShadow = false`; своя мягкая тень — CALayer с `shadowPath` по скруглённому прямоугольнику и маской even-odd, чтобы тень была только снаружи и не темнила стекло. Клик в прозрачный запас закрывает панель (`GlassPanel.sendEvent`). Контент дополнительно обрезан по `GlassHost.panelRadius` (22, continuous).
+- **Грабли со скруглёнными углами (важно):** Liquid Glass рисует световую кромку чуть за пределами своей формы. Если окно заканчивается ровно по краю стекла, она обрезается прямоугольником окна → тёмные линии/«квадратные уголки» по краям (особенно в тёмной теме и снизу). Решение (`GlassHost.makePanelContent`): окно панели на `GlassHost.margin` = 22 pt больше стекла с каждой стороны, прозрачное, `hasShadow = false`. Своей тени нет — в 1.3 была CALayer-тень, автору она показалась артефактом, убрана в 1.4. Клик в прозрачный запас закрывает панель (`GlassPanel.sendEvent`). Контент дополнительно обрезан по `GlassHost.panelRadius` (22, continuous).
 - Обычные окна (запасное окно микшера, «О программе») — стандартные системные окна **без** `NSGlassEffectView`: стекло во всё прямоугольное окно даёт те же артефакты в углах.
 - Панель — `GlassPanel` (`NSPanel`, borderless + nonactivating, может быть key → работает пробел). Контент — `GlassHost.makePanelContent`: SwiftUI в `NSHostingView` внутри **`NSGlassEffectView`** (macOS 26+; следует системной настройке Liquid Glass «прозрачное/тонированное»), до 26 — `NSVisualEffectView(.menu)`. Закрывается по клику снаружи (global monitor), Esc, потере фокуса.
 - **Грабли macOS 27:** строку меню рисует система; окно статус-айтема в нашем процессе — заглушка с фреймом `(0, -33, 32, 33)`, `screen == nil`. Поэтому: при клике по значку панель позиционируется по курсору (`showPanel(fromClick: true)`); если координат нет и это не клик — открывается окно-фолбэк.
@@ -136,43 +138,30 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 | id | Название | Источник |
 |---|---|---|
 | rain | Дождь | Moodist rain/light-rain |
-| heavyrain | Ливень | rain/heavy-rain |
-| window | Дождь в окно | rain/rain-on-window |
-| storm | Гроза | rain/thunder |
+| storm | Гроза (+ далёкие раскаты) | rain/thunder |
 | waves | Морской прибой | nature/waves |
 | river | Ручей | nature/river |
-| waterfall | Водопад | nature/waterfall |
+| underwater | Под водой | places/underwater (также фон китов) |
 | campfire | Костёр (boost 1.8) | nature/campfire |
-| wind | Зимний ветер | nature/wind |
-| trees | Ветер в листве | nature/wind-in-trees |
-| birds | Птицы в парке | animals/birds |
+| wind | Ветер | nature/wind |
+| birds | Птицы (+ редкие птицы по сторонам) | animals/birds |
 | crickets | Сверчки | animals/crickets |
 | whale | Киты (3 слоя) | animals/whale + places/underwater |
 | city | Улица | urban/busy-street |
 | cafe | Кафе | places/cafe |
-| subway | Метро | places/subway-station |
-| train | В поезде | transport/inside-a-train |
-| sailboat | Парусник | transport/sailboat |
+| train | Поезд | transport/inside-a-train |
 | library | Библиотека | places/library |
 | keyboard | Клавиатура | things/keyboard |
-| typewriter | Печатная машинка | things/typewriter |
 | clock | Часы (точная петля) | things/clock |
 | heartbeat | Сердцебиение | синтез |
-| chimes | Колокольчики | things/wind-chimes |
-| tent | Дождь по палатке | rain/rain-on-tent |
-| underwater | Под водой | places/underwater (также фон китов) |
-| frog | Лягушки | animals/frog |
-| jungle | Джунгли | nature/jungle |
-| seagulls | Чайки у моря | animals/seagulls |
-| village | Ночная деревня | places/night-village |
-| airplane | В самолёте | transport/airplane |
 | cat | Мурлыканье кота | animals/cat-purring |
 | vinyl | Виниловая пластинка | things/vinyl-effect |
-| fan | Вентилятор | things/ceiling-fan |
 | bowl | Поющая чаша (режим событий) | things/singing-bowl |
 | white | Белый шум | синтез в реальном времени |
 
-Пресеты: «Дождливое кафе», «Фокус», «У костра», «Море», «Гроза», «Ночной поезд», «Библиотека» (`Mix.presets` в `MixStore.swift`).
+В v1.4 по просьбе автора убраны дубли (ливень, дождь в окно, дождь по палатке, водопад, ветер в листве, джунгли, чайки, лягушки, ночная деревня, метро, парусник, самолёт, печатная машинка, вентилятор, колокольчики) — «одна идея = один звук». Файлы удалены из репозитория; при желании их можно вернуть из Moodist.
+
+Пресеты: «Дождливое кафе», «Фокус», «У костра», «Море», «Гроза», «Ночной поезд», «Библиотека» (`Mix.presets` в `MixStore.swift`); все ссылаются только на существующие звуки.
 
 **Лицензии.** Записи — из открытой библиотеки Moodist (github.com/remvze/moodist), лицензии Pixabay Content License и CC0; распространять в составе приложения можно. Скачивались с `https://raw.githubusercontent.com/remvze/moodist/main/public/sounds/<путь>.mp3`. Звуки из коммерческих приложений и сайтов не использовать — только открытые лицензии. Шумы из Moodist (9-секундные петли) сознательно заменены синтезом.
 
