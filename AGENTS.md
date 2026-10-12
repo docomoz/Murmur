@@ -7,6 +7,7 @@ Key rules:
 - Build with `./build.sh`; verify with `build/Murmur.app/Contents/MacOS/Murmur --selftest` / `--playtest` / `--snapshot <prefix>`.
 - After replacing the binary inside `build/Murmur.app`, re-sign: `codesign --force --deep -s - build/Murmur.app`.
 - Never bundle third-party sounds or artwork from other apps; audio comes only from Moodist (Pixabay License / CC0) or is synthesized in code.
+- Mac App Store build: `./build-appstore.sh` (sandboxed, bundle ID `com.docomoz.murmur`); submission guide and store texts live in `AppStore/`.
 - UI strings are Russian.
 - Sounds are never plain loops: recordings play as granular textures (`Texture.swift`, `Sound.layers`); only the clock uses an exact loop.
 - `--snapshot` can't render Liquid Glass; `SelfTest.isRendering` swaps glass for a material so layout can still be checked.

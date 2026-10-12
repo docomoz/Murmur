@@ -171,6 +171,18 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 
 ## 6. Распространение
 
+### Mac App Store (подготовлено, ждёт аккаунта разработчика)
+- Пошаговая инструкция для автора: **`AppStore/README.md`**; тексты страницы RU/EN с проверенными лимитами, ключевые слова, заметки для App Review и идеи скриншотов: `AppStore/metadata.md`; политика конфиденциальности: `AppStore/PRIVACY.md` (URL в App Store Connect указывает на неё на GitHub).
+- `build-appstore.sh` берёт результат `build.sh` и делает App Store-версию: Bundle ID **`com.docomoz.murmur`** (DMG остаётся `app.murmur.mac`, чтобы не терять настройки существующих установок), `ITSAppUsesNonExemptEncryption = false`, `PrivacyInfo.xcprivacy` (только UserDefaults, причина CA92.1), песочница `AppStore/Murmur.entitlements` (только `app-sandbox`, больше ничего не нужно).
+  - Без переменных — локальная тестовая сборка в песочнице с ad-hoc подписью (`build/appstore/Murmur.app`).
+  - С `MAS_APP_IDENTITY` (Apple Distribution), `MAS_INSTALLER_IDENTITY` (3rd Party Mac Developer Installer) и `MAS_PROFILE` (Mac App Store Connect profile) — встраивает профиль, добавляет `com.apple.application-identifier`/`team-identifier` из профиля в entitlements, подписывает и собирает `build/appstore/Murmur.pkg` для Transporter.
+- Проверено в песочнице (12.10): все записи читаются, звук играет (`--selftest`, `--playtest`), настройки пишутся в `~/Library/Containers/com.docomoz.murmur`, панель открывается. Глобальный монитор кликов, хоткей и автозапуск в песочнице допустимы, но вживую в App Store-сборке не проверялись.
+- `scripts/make_screenshot.swift <panel.png> "Заголовок" "Подпись" out.png` — кадр 2880×1800 для App Store из снимка панели (⌘⇧4 → пробел → клик).
+- Приложение бесплатное: банковские/налоговые формы не нужны. Автор: Maksim Berezkin, аккаунт Apple ID — Казахстан, карта — Киргизия (обсуждали; второй аккаунт не нужен).
+- Интерфейс только на русском — если добавлять английскую страницу в App Store, лучше сначала локализовать UI.
+
+### DMG (GitHub Releases)
+
 - `build.sh` подписывает ad-hoc (`codesign -s -`). Без сертификата Apple Developer ($99/год) у друзей Gatekeeper ругнётся при первом запуске: «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть» или `xattr -dr com.apple.quarantine /Applications/Murmur.app`. Это описано в `README-друзьям.txt`.
 - Релизная сборка с Developer ID и нотаризацией: `DEVELOPER_ID="Developer ID Application: Maksim Berezkin (TEAMID)" NOTARY_PROFILE=murmur-notary ./build.sh`. Скрипт подписывает с hardened runtime, нотаризует и степлит сначала .app (zip), потом подписанный DMG, а в «Как открыть.txt» заменяет инструкцию про Gatekeeper на простое «Запусти». Без переменных — прежняя ad-hoc сборка. `NOTARY_PROFILE` без `DEVELOPER_ID` — ошибка.
 - Однократная настройка: сертификат «Developer ID Application» (developer.apple.com → Certificates, CSR из «Связки ключей»; проверить: `security find-identity -v -p codesigning`), затем `xcrun notarytool store-credentials murmur-notary --apple-id <id> --team-id <TEAMID>` с app-specific password с appleid.apple.com.
