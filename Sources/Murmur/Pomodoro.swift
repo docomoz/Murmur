@@ -56,7 +56,7 @@ enum PomodoroPhase: Equatable {
     /// Short word for the footer pill.
     var shortTitle: String { self == .focus ? L("Фокус", "Focus") : L("Перерыв", "Break") }
 
-    var symbol: String { self == .focus ? "brain.head.profile" : "cup.and.saucer" }
+    var symbol: String { self == .focus ? "scope" : "cup.and.saucer" }
 }
 
 /// Where a running Pomodoro is: which phase and when it ends. Pure value — `MixStore` drives it

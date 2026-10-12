@@ -617,7 +617,7 @@ enum SelfTest {
         }
         let icons = ImageRenderer(content: HStack(spacing: 12) {
             ForEach([(0.0, false, nil), (0.3, true, nil), (0.9, true, nil),
-                     (0.5, true, "brain.head.profile"), (0.7, true, "cup.and.saucer")], id: \.0) { item in
+                     (0.5, true, "scope"), (0.7, true, "cup.and.saucer")], id: \.0) { item in
                 Image(nsImage: StatusIcon.image(phase: item.0, playing: item.1, badge: item.2))
                     .resizable().aspectRatio(contentMode: .fit).frame(height: 72)
             }
@@ -626,6 +626,28 @@ enum SelfTest {
         if let image = icons.cgImage {
             try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
                 .write(to: URL(fileURLWithPath: "\(prefix)-icon.png"))
+        }
+        // Menu bar items at their real size (2× = retina), light and dark bar, as the system tints templates.
+        let bar = ImageRenderer(content: VStack(spacing: 0) {
+            ForEach([(Color(white: 0.92), Color.black), (Color(white: 0.16), Color.white)], id: \.1) { colors in
+                HStack(spacing: 14) {
+                    ForEach([(nil, "29:59"), ("scope", "24:13"), ("cup.and.saucer", "4:59")], id: \.1) { item in
+                        HStack(spacing: 4) {
+                            Image(nsImage: StatusIcon.image(phase: 0.4, playing: true, badge: item.0)).renderingMode(.template)
+                            Text(item.1).font(.system(size: NSFont.systemFontSize).monospacedDigit()).fixedSize()
+                        }
+                    }
+                }
+                .foregroundStyle(colors.1)
+                .padding(.horizontal, 10)
+                .frame(height: 24)
+                .background(colors.0)
+            }
+        })
+        bar.scale = 2
+        if let image = bar.cgImage {
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: "\(prefix)-menubar.png"))
         }
 
         // Pomodoro: the footer pill in focus, then in a break (the break mix is in the list).
