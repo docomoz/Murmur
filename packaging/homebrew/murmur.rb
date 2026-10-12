@@ -1,6 +1,6 @@
 cask "murmur" do
-  version "1.10"
-  sha256 "71c31bd0934ebdba2fe51caa87cf54650569b966338632ef3fdae9757aa711cf"
+  version "1.11"
+  sha256 "0b5c314f8f84179473a19b302add9b714e8f6684082bf2d7a144227a2e3bbb62"
 
   url "https://github.com/docomoz/Murmur/releases/download/v#{version}/Murmur.dmg"
   name "Murmur"
@@ -12,6 +12,7 @@ cask "murmur" do
     strategy :github_latest
   end
 
+  auto_updates true
   depends_on macos: :sonoma
 
   app "Murmur.app"
@@ -19,6 +20,9 @@ cask "murmur" do
   uninstall quit: "app.murmur.mac"
 
   zap trash: [
+    "~/Library/Caches/app.murmur.mac",
+    "~/Library/HTTPStorages/app.murmur.mac",
+    "~/Library/HTTPStorages/app.murmur.mac.binarycookies",
     "~/Library/Preferences/app.murmur.mac.plist",
     "~/Library/Saved Application State/app.murmur.mac.savedState",
   ]
