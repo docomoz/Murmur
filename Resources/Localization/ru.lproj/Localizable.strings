@@ -1,0 +1,4 @@
+/* Russian is the language of the source literals in Sources/Murmur/Intents.swift, so nothing
+   needs translating here. The file exists so the bundle lists Russian as a localization:
+   with CFBundleDevelopmentRegion = en, a Russian Mac picks ru.lproj, any other language en.lproj —
+   the same rule as L("…", "…") in the UI. */

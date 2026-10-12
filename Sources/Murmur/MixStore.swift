@@ -136,11 +136,7 @@ final class MixStore: ObservableObject {
         let savedAccent = AccentChoice(rawValue: defaults.string(forKey: "accent") ?? "") ?? .system
         accent = savedAccent
         Theme.accent = savedAccent
-        if let data = defaults.data(forKey: "userMixes"), let mixes = try? JSONDecoder().decode([Mix].self, from: data) {
-            userMixes = mixes
-        } else {
-            userMixes = []
-        }
+        userMixes = Self.savedUserMixes()
         audio.masterVolume = Self.curve(master)
 
         hotKey = HotKey(keyCode: UInt32(kVK_ANSI_P), modifiers: UInt32(controlKey | optionKey)) { [weak self] in
@@ -151,6 +147,13 @@ final class MixStore: ObservableObject {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.audio.recover() }
         }
+    }
+
+    /// The user's saved mixes as stored in UserDefaults.
+    static func savedUserMixes() -> [Mix] {
+        guard let data = UserDefaults.standard.data(forKey: "userMixes"),
+              let mixes = try? JSONDecoder().decode([Mix].self, from: data) else { return [] }
+        return mixes
     }
 
     // MARK: Queries
@@ -220,6 +223,20 @@ final class MixStore: ObservableObject {
         }
         isPlaying.toggle()
         sync(fade: isPlaying ? 1.0 : 0.6)
+    }
+
+    /// Resumes the current mix (or picks one at random when nothing is selected).
+    func play() {
+        if active.isEmpty { return randomMix() }
+        guard !isPlaying else { return }
+        isPlaying = true
+        sync(fade: 1.0)
+    }
+
+    func pause() {
+        guard isPlaying else { return }
+        isPlaying = false
+        sync(fade: 0.6)
     }
 
     func stopAll() {
@@ -308,6 +325,7 @@ final class MixStore: ObservableObject {
         )
         userMixes.append(mix)
         persist()
+        mixesChanged()
     }
 
     /// Snapshot-only: show sample saved mixes without touching the user's data.
@@ -316,6 +334,13 @@ final class MixStore: ObservableObject {
     func delete(_ mix: Mix) {
         userMixes.removeAll { $0.id == mix.id }
         persist()
+        mixesChanged()
+    }
+
+    /// Lets Siri / Spotlight phrases like «Включи <микс> в Murmur» learn about new and deleted mixes.
+    private func mixesChanged() {
+        guard !Self.sandboxed else { return }
+        MurmurShortcuts.updateAppShortcutParameters()
     }
 
     var suggestedMixName: String {
