@@ -115,7 +115,7 @@ final class MixStore: ObservableObject {
             Theme.accent = accent
         }
     }
-    /// «Тише во время созвонов»: fade out while another app records from a microphone.
+    /// «Тише во время созвонов»: fade out while another app is in a call (records and plays).
     @Published var duckDuringCalls: Bool {
         didSet {
             if !Self.sandboxed { defaults.set(duckDuringCalls, forKey: "duckDuringCalls") }

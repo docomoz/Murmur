@@ -1,16 +1,17 @@
 import CoreAudio
 import Foundation
 
-/// «Тише во время созвонов»: watches whether any other app is recording from a microphone
-/// (Zoom, Meet in a browser, Telegram, FaceTime…) — without ever opening the mic itself, so no
-/// microphone permission is involved.
+/// «Тише во время созвонов»: watches whether another app is in a call (Zoom, Meet in a browser,
+/// Telegram, FaceTime…) — without ever opening the mic itself, so no microphone permission is
+/// involved.
 ///
-/// The truth comes from the HAL's per-process objects (macOS 14+): a process with
-/// `kAudioProcessPropertyIsRunningInput` is capturing audio — the same thing that lights the
-/// orange dot in the menu bar. Device-level `kAudioDevicePropertyDeviceIsRunningSomewhere` can't
-/// be the signal on its own: headsets and AirPods are one device for input and output, so
-/// Murmur's own playback would keep "the mic device" running. Those device flags are only used
-/// as an extra wake-up to re-check the processes.
+/// The truth comes from the HAL's per-process objects (macOS 14+): which processes are capturing
+/// (`kAudioProcessPropertyIsRunningInput`, the orange dot) and which are playing
+/// (`kAudioProcessPropertyIsRunningOutput`). A call both listens and speaks, so only an app that
+/// records *and* plays counts (`CallDetector`); a recorder alone (Plaud, dictation tools) doesn't.
+/// Device-level `kAudioDevicePropertyDeviceIsRunningSomewhere` can't be the signal: headsets and
+/// AirPods are one device for input and output, so Murmur's own playback would keep "the mic
+/// device" running. Those device flags are only an extra wake-up to re-check the processes.
 ///
 /// Calls `onChange` on the main thread. All methods must be called on the main thread.
 final class MicMonitor {
@@ -30,7 +31,12 @@ final class MicMonitor {
 
     func start() {
         guard listener == nil else { return }
-        listener = { [weak self] _, _ in self?.changed() }
+        listener = { [weak self] count, addresses in
+            // Only a new or vanished process/device needs fresh listeners; flag flips just re-check.
+            let lists: Set<AudioObjectPropertySelector> = [kAudioHardwarePropertyProcessObjectList, kAudioHardwarePropertyDevices]
+            let relist = (0..<Int(count)).contains { lists.contains(addresses[$0].mSelector) }
+            self?.changed(relist: relist)
+        }
         rewatch()
         refresh()
     }
@@ -47,33 +53,31 @@ final class MicMonitor {
 
     // MARK: State
 
-    /// Whether any process other than Murmur is capturing audio right now.
-    static func someoneIsRecording() -> Bool { !recorders().isEmpty }
-
-    /// HAL process objects of everyone but Murmur that is capturing audio right now.
-    static func recorders() -> [AudioObjectID] {
+    /// Everyone but Murmur that talks to the HAL, with what they are doing right now.
+    static func clients() -> [CallDetector.Client] {
         let me = getpid()
-        return processes().filter { process in
-            pid(of: process) != me && flag(process, kAudioProcessPropertyIsRunningInput)
+        return processes().compactMap { process in
+            let pid = pid(of: process)
+            guard pid != me else { return nil }
+            return CallDetector.Client(
+                bundleID: bundleID(of: process) ?? "",
+                input: flag(process, kAudioProcessPropertyIsRunningInput),
+                output: flag(process, kAudioProcessPropertyIsRunningOutput))
         }
     }
 
-    /// Debug: who is recording, by bundle ID (or pid when there is none).
+    /// Debug: who is capturing audio right now, by bundle ID.
     static func recorderNames() -> [String] {
-        recorders().map { process in
-            var address = address(kAudioProcessPropertyBundleID)
-            var name: Unmanaged<CFString>?
-            var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
-            if AudioObjectGetPropertyData(process, &address, 0, nil, &size, &name) == noErr,
-               let id = name?.takeRetainedValue() as String?, !id.isEmpty {
-                return id
-            }
-            return "pid \(pid(of: process))"
-        }
+        clients().filter(\.input).map { $0.bundleID.isEmpty ? "?" : $0.bundleID }
+    }
+
+    /// Debug: the apps that would duck Murmur right now.
+    static func callNames() -> [String] {
+        CallDetector.callApps(clients(), me: Bundle.main.bundleIdentifier ?? "")
     }
 
     private func refresh() {
-        let now = Self.someoneIsRecording()
+        let now = !Self.callNames().isEmpty
         guard now != inUse else { return }
         inUse = now
         onChange(now)
@@ -81,8 +85,8 @@ final class MicMonitor {
 
     /// Something moved: re-check now and once more a moment later, in case the device and process
     /// flags don't update in the same instant.
-    private func changed() {
-        rewatch()
+    private func changed(relist: Bool) {
+        if relist { rewatch() }
         refresh()
         recheck?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.refresh() }
@@ -92,8 +96,8 @@ final class MicMonitor {
 
     // MARK: Listeners
 
-    /// (Re)attaches listeners: the lists of processes and devices on the system object, input
-    /// state on every process, running state on every input-capable device.
+    /// (Re)attaches listeners: the lists of processes and devices on the system object, input and
+    /// output state on every other process, running state on every input-capable device.
     private func rewatch() {
         guard let listener else { return }
         unwatchAll()
@@ -101,8 +105,11 @@ final class MicMonitor {
         watch(system, kAudioHardwarePropertyProcessObjectList, listener)
         watch(system, kAudioHardwarePropertyDevices, listener)
         watch(system, kAudioHardwarePropertyDefaultInputDevice, listener)
-        for process in Self.processes() {
+        let me = getpid()
+        // Murmur's own play/pause isn't news.
+        for process in Self.processes() where Self.pid(of: process) != me {
             watch(process, kAudioProcessPropertyIsRunningInput, listener)
+            watch(process, kAudioProcessPropertyIsRunningOutput, listener)
         }
         for device in Self.ids(system, kAudioHardwarePropertyDevices) where Self.hasInput(device) {
             watch(device, kAudioDevicePropertyDeviceIsRunningSomewhere, listener)
@@ -163,6 +170,90 @@ final class MicMonitor {
         var value: pid_t = -1
         var size = UInt32(MemoryLayout<pid_t>.size)
         return AudioObjectGetPropertyData(process, &address, 0, nil, &size, &value) == noErr ? value : -1
+    }
+
+    private static func bundleID(of process: AudioObjectID) -> String? {
+        var address = address(kAudioProcessPropertyBundleID)
+        var name: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        guard AudioObjectGetPropertyData(process, &address, 0, nil, &size, &name) == noErr else { return nil }
+        return name?.takeRetainedValue() as String?
+    }
+}
+
+/// "Is somebody in a call?" as a pure function over the HAL's audio clients, so `--selftest`
+/// can check it without a mic or a call.
+///
+/// A call listens and speaks: an app counts when it captures input *and* plays output. Many apps
+/// split that between processes (`kontur.talk` records, `kontur.talk.helper` plays; Chrome runs
+/// Meet's audio in `com.google.Chrome.helper` next to `com.google.Chrome`), so processes whose
+/// bundle IDs nest — one is the other plus `.something` — are treated as one app. Siblings that
+/// merely share a vendor prefix (`com.apple.VoiceMemos` and `com.apple.Music`) are not. Safari's
+/// WebRTC records and plays in the same `com.apple.WebKit.GPU` process. Recorders alone (Plaud,
+/// dictation tools) never duck, and Murmur itself never counts.
+enum CallDetector {
+    struct Client {
+        var bundleID: String
+        var input: Bool
+        var output: Bool
+    }
+
+    /// Bundle IDs of the recording processes that are in a call; empty = no call.
+    static func callApps(_ clients: [Client], me: String) -> [String] {
+        let others = clients.filter { me.isEmpty || !sameApp($0.bundleID, me) }
+        let players = others.filter(\.output).map(\.bundleID).filter { !$0.isEmpty }
+        return others.filter { recorder in
+            recorder.input && (recorder.output || players.contains { sameApp($0, recorder.bundleID) })
+        }.map { $0.bundleID.isEmpty ? "?" : $0.bundleID }
+    }
+
+    /// `kontur.talk` ~ `kontur.talk.helper`; `com.apple.Music` ≁ `com.apple.VoiceMemos`.
+    static func sameApp(_ a: String, _ b: String) -> Bool {
+        guard !a.isEmpty, !b.isEmpty else { return false }
+        let a = a.lowercased(), b = b.lowercased()
+        return a == b || a.hasPrefix(b + ".") || b.hasPrefix(a + ".")
+    }
+
+    /// `--selftest`: returns failures (empty = all good).
+    static func selfCheck() -> [String] {
+        typealias C = Client
+        let me = "app.murmur.mac"
+        let cases: [(String, [Client], Bool)] = [
+            ("nobody", [], false),
+            ("Plaud records only", [C(bundleID: "ai.plaud.desktop.plaud", input: true, output: false)], false),
+            ("Plaud records, its own idle helper", [
+                C(bundleID: "ai.plaud.desktop.plaud", input: true, output: false),
+                C(bundleID: "ai.plaud.desktop.plaud.helper", input: false, output: false)], false),
+            ("kontur.talk records + kontur.talk.helper plays", [
+                C(bundleID: "kontur.talk", input: true, output: false),
+                C(bundleID: "kontur.talk.helper", input: false, output: true)], true),
+            ("one process records and plays", [C(bundleID: "us.zoom.xos", input: true, output: true)], true),
+            ("one process without a bundle ID records and plays", [C(bundleID: "", input: true, output: true)], true),
+            ("Murmur plays + Plaud records", [
+                C(bundleID: me, input: false, output: true),
+                C(bundleID: "ai.plaud.desktop.plaud", input: true, output: false)], false),
+            ("Murmur itself records and plays", [C(bundleID: me, input: true, output: true)], false),
+            ("browser helper records + browser helper plays", [
+                C(bundleID: "com.google.Chrome.helper", input: true, output: false),
+                C(bundleID: "com.google.Chrome.helper", input: false, output: true),
+                C(bundleID: "com.google.Chrome", input: false, output: false)], true),
+            ("Chrome helper records, Chrome plays", [
+                C(bundleID: "com.google.Chrome.helper", input: true, output: false),
+                C(bundleID: "com.google.Chrome", input: false, output: true)], true),
+            ("Safari WebRTC in the GPU process", [C(bundleID: "com.apple.WebKit.GPU", input: true, output: true)], true),
+            ("Voice Memos records while Music plays", [
+                C(bundleID: "com.apple.VoiceMemos", input: true, output: false),
+                C(bundleID: "com.apple.Music", input: false, output: true)], false),
+            ("dictation records, someone else plays", [
+                C(bundleID: "com.example.dictation", input: true, output: false),
+                C(bundleID: "com.spotify.client", input: false, output: true)], false),
+            ("unnamed recorder + unnamed player stay apart", [
+                C(bundleID: "", input: true, output: false),
+                C(bundleID: "", input: false, output: true)], false),
+        ]
+        return cases.compactMap { name, clients, expected in
+            !callApps(clients, me: me).isEmpty == expected ? nil : "\(name): expected \(expected ? "duck" : "no duck")"
+        }
     }
 }
 

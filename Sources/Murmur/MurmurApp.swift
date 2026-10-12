@@ -414,10 +414,14 @@ enum SelfTest {
         }
         let duckFailures = DuckEnvelope.selfCheck()
         print("\nduck envelope: " + (duckFailures.isEmpty ? "ok" : "FAIL " + duckFailures.joined(separator: "; ")))
+        let callFailures = CallDetector.selfCheck()
+        print("call detector: " + (callFailures.isEmpty ? "ok" : "FAIL " + callFailures.joined(separator: "; ")))
         // Reads the HAL's process list only — never opens the microphone.
         let recorders = MicMonitor.recorderNames()
+        let calls = MicMonitor.callNames()
         print("mic monitor: \(MicMonitor.processes().count) audio clients visible, recording now: "
-              + (recorders.isEmpty ? "nobody" : recorders.joined(separator: ", ")))
+              + (recorders.isEmpty ? "nobody" : recorders.joined(separator: ", "))
+              + "; would duck for: " + (calls.isEmpty ? "nobody" : calls.joined(separator: ", ")))
 
         print("\nНаугад, примеры:")
         for _ in 0..<12 {
