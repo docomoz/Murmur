@@ -96,19 +96,60 @@ if [ -n "$NOTARY_PROFILE" ]; then
 fi
 
 echo "▸ Packing DMG…"
+# Finder window: just the app and Applications with an arrow between them, over a drawn background.
+# Sizes are in points; the background is rendered for exactly this layout (WIN_H is the content below
+# the title bar). The window is made TITLEBAR taller; the background has a bottom bleed in case
+# another macOS draws a shorter title bar.
+WIN_W=600 WIN_H=330 ICON_Y=200 APP_X=160 APPS_X=440 TITLEBAR=32
 STAGE="build/dmg"
-mkdir -p "$STAGE"
+mkdir -p "$STAGE/.background"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-if [ -n "$NOTARY_PROFILE" ]; then
-  # Notarized: replace the Gatekeeper workaround in step 2 with a plain "launch it"
-  awk '/^2\. Запусти/ { print "2. Запусти Murmur из «Программ»."; skip = 1; next }
-       /^3\./ { skip = 0 } !skip' "README-друзьям.txt" > "$STAGE/Как открыть.txt"
-else
-  cp "README-друзьям.txt" "$STAGE/Как открыть.txt"
-fi
-hdiutil create -volname "Murmur" -srcfolder "$STAGE" -ov -format UDZO "build/Murmur.dmg" >/dev/null
+swift scripts/make_dmg_background.swift Resources/icon-1024.png build/dmg-bg $WIN_W $WIN_H $APP_X $APPS_X $ICON_Y
+tiffutil -cathidpicheck build/dmg-bg.png build/dmg-bg@2x.png -out "$STAGE/.background/background.tiff" 2>/dev/null
+rm build/dmg-bg.png build/dmg-bg@2x.png
+
+# Finder stores the window layout in .DS_Store, so it's set on a writable image and then compressed.
+hdiutil create -volname "Murmur" -srcfolder "$STAGE" -fs HFS+ -format UDRW -ov build/Murmur-rw.dmg >/dev/null
 rm -rf "$STAGE"
+MOUNT=$(hdiutil attach build/Murmur-rw.dmg -readwrite -noverify -noautoopen | grep -o '/Volumes/.*$')
+osascript - "$MOUNT" $WIN_W $((WIN_H + TITLEBAR)) $APP_X $APPS_X $ICON_Y <<'APPLESCRIPT'
+on run {mountPath, winW, winH, appX, appsX, iconY}
+  set {winW, winH, appX, appsX, iconY} to {winW as integer, winH as integer, appX as integer, appsX as integer, iconY as integer}
+  tell application "Finder"
+    set dmg to (POSIX file mountPath as alias)
+    open dmg
+    set w to container window of dmg
+    set current view of w to icon view
+    set toolbar visible of w to false
+    set statusbar visible of w to false
+    set bounds of w to {200, 120, 200 + winW, 120 + winH}
+    set opts to icon view options of w
+    set arrangement of opts to not arranged
+    set icon size of opts to 128
+    set text size of opts to 13
+    set shows item info of opts to false
+    set shows icon preview of opts to false
+    set background picture of opts to file ".background:background.tiff" of dmg
+    set position of item "Murmur.app" of dmg to {appX, iconY}
+    set position of item "Applications" of dmg to {appsX, iconY}
+    close w
+    open dmg
+    update dmg without registering applications
+    delay 1
+    close container window of dmg
+  end tell
+end run
+APPLESCRIPT
+# Finder writes .DS_Store asynchronously; wait for it before detaching.
+for _ in $(seq 20); do [ -f "$MOUNT/.DS_Store" ] && break; sleep 0.5; done
+# Volume icon goes in last: -srcfolder skips it and Finder drops it while the window is being set up.
+cp "$APP/Contents/Resources/AppIcon.icns" "$MOUNT/.VolumeIcon.icns"
+SetFile -a C "$MOUNT"
+rm -rf "$MOUNT/.fseventsd"
+hdiutil detach "$MOUNT" -quiet
+hdiutil convert build/Murmur-rw.dmg -format UDZO -imagekey zlib-level=9 -ov -o build/Murmur.dmg >/dev/null
+rm build/Murmur-rw.dmg
 
 if [ -n "$DEVELOPER_ID" ]; then
   codesign --force --timestamp --sign "$DEVELOPER_ID" build/Murmur.dmg

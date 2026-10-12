@@ -52,7 +52,7 @@ open build/Murmur.app --args --open-panel                   # запустить
 
 ```
 Package.swift                 SwiftPM, executable target "Murmur", macOS 14
-build.sh                      сборка: 2 арх → lipo → .app → иконка → Info.plist → ad-hoc подпись → DMG
+build.sh                      сборка: 2 арх → lipo → .app → иконка → Info.plist → ad-hoc подпись → оформленный DMG
 Sources/Murmur/
   MurmurApp.swift             @main (чистый AppKit), AppDelegate: NSStatusItem + GlassPanel, окно-фолбэк, GlassHost; SelfTest
   Sound.swift                 модель звука и каталог Sound.all (28 шт.), категории, Color(hex:)
@@ -63,8 +63,8 @@ Sources/Murmur/
 Resources/Sounds/*.mp3        19 записей (≈34 МБ), копируются в .app/Contents/Resources/Sounds
 Resources/icon-1024.png       иконка (генерируется scripts/make_icon.swift)
 scripts/make_icon.swift       рисует иконку кодом: `swift scripts/make_icon.swift Resources/icon-1024.png`
+scripts/make_dmg_background.swift  фон окна DMG (логотип, название, стрелка); build.sh вызывает его сам
 CREDITS.md                    источники и лицензии звуков (кладётся в бандл)
-README-друзьям.txt            инструкция для получателей DMG (кладётся в DMG как «Как открыть.txt»)
 preview-*.png                 последние снапшоты UI
 build/                        артефакты (не исходники)
 ```
@@ -183,8 +183,10 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 
 ### DMG (GitHub Releases)
 
-- `build.sh` подписывает ad-hoc (`codesign -s -`). Без сертификата Apple Developer ($99/год) у друзей Gatekeeper ругнётся при первом запуске: «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть» или `xattr -dr com.apple.quarantine /Applications/Murmur.app`. Это описано в `README-друзьям.txt`.
-- Релизная сборка с Developer ID и нотаризацией: `DEVELOPER_ID="Developer ID Application: Maksim Berezkin (TEAMID)" NOTARY_PROFILE=murmur-notary ./build.sh`. Скрипт подписывает с hardened runtime, нотаризует и степлит сначала .app (zip), потом подписанный DMG, а в «Как открыть.txt» заменяет инструкцию про Gatekeeper на простое «Запусти». Без переменных — прежняя ad-hoc сборка. `NOTARY_PROFILE` без `DEVELOPER_ID` — ошибка.
+- `build.sh` подписывает ad-hoc (`codesign -s -`). Без сертификата Apple Developer ($99/год) у друзей Gatekeeper ругнётся при первом запуске: «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть» или `xattr -dr com.apple.quarantine /Applications/Murmur.app`. Это описано в `README.md`.
+- Релизная сборка с Developer ID и нотаризацией: `DEVELOPER_ID="Developer ID Application: Maksim Berezkin (TEAMID)" NOTARY_PROFILE=murmur-notary ./build.sh`. Скрипт подписывает с hardened runtime, нотаризует и степлит сначала .app (zip), потом подписанный DMG. Без переменных — прежняя ad-hoc сборка. `NOTARY_PROFILE` без `DEVELOPER_ID` — ошибка.
+- В DMG только `Murmur.app` и ссылка на `Applications`, между ними стрелка на фоне (без txt). `build.sh` создаёт записываемый образ, кладёт `.background/background.tiff` (1x+2x, рисует `scripts/make_dmg_background.swift`), раскладывает окно через AppleScript в Finder (нужен доступ Терминала к Finder, окно на секунду мелькнёт), затем кладёт `.VolumeIcon.icns` и сжимает в UDZO. Размер окна и позиции иконок — переменные `WIN_*`/`APP_X`/`APPS_X`/`ICON_Y` в `build.sh`, фон рисуется под них. `WIN_H` — высота без заголовка (заголовок Finder ≈32 pt на macOS 27, у фона есть запас снизу); при иконках 128 и `WIN_H` < 330 Finder показывает скроллбар. Подписи под иконками Finder рисует чёрными в светлой теме и белыми в тёмной, поэтому низ фона средне-тёмный.
+- `.VolumeIcon.icns` нельзя класть заранее: `hdiutil -srcfolder` его пропускает, а Finder удаляет при настройке окна.
 - Однократная настройка: сертификат «Developer ID Application» (developer.apple.com → Certificates, CSR из «Связки ключей»; проверить: `security find-identity -v -p codesigning`), затем `xcrun notarytool store-credentials murmur-notary --apple-id <id> --team-id <TEAMID>` с app-specific password с appleid.apple.com.
 - Entitlements не нужны: `--selftest`/`--playtest` проходят с hardened runtime (проверено ad-hoc подписью с `--options runtime`).
 - Версия задаётся в `build.sh` (`VERSION`, `CFBundleVersion`). Автор: Maksim Berezkin (в «О программе», копирайте и LICENSE).
