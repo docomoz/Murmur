@@ -97,7 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     self.iconPhase += 1.0 / 12
-                    self.statusItem?.button?.image = StatusIcon.image(phase: self.iconPhase, playing: true)
+                    self.statusItem?.button?.image = StatusIcon.image(phase: self.iconPhase, playing: true,
+                                                                      badge: self.store.pomodoro?.phase.symbol)
                 }
             }
             RunLoop.main.add(timer, forMode: .common)
@@ -106,8 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             iconTimer?.invalidate()
             iconTimer = nil
         }
-        button.image = StatusIcon.image(phase: iconPhase, playing: playing)
-        if let label = store.timerLabel {
+        button.image = StatusIcon.image(phase: iconPhase, playing: playing, badge: store.pomodoro?.phase.symbol)
+        if let label = store.pomodoroLabel ?? store.timerLabel {
             button.attributedTitle = NSAttributedString(string: " " + label, attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
             ])
@@ -264,12 +265,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 }
 
 /// The menu bar icon: bars in a circle, drawn by hand so they can sway softly while playing.
+/// While Pomodoro runs, a small phase glyph (`badge`, an SF Symbol) follows the circle.
 enum StatusIcon {
     private static let base: [CGFloat] = [0.46, 0.88, 0.66, 0.40]
     private static let speed: [Double] = [0.9, 0.62, 1.1, 0.75]
 
-    static func image(phase: Double, playing: Bool) -> NSImage {
-        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { rect in
+    static func image(phase: Double, playing: Bool, badge: String? = nil) -> NSImage {
+        let glyph = badge.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
+        let extra = glyph.map { $0.size.width + 4 } ?? 0
+        let image = NSImage(size: NSSize(width: 18 + extra, height: 18), flipped: false) { bounds in
+            let rect = NSRect(x: 0, y: 0, width: 18, height: 18)
+            if let glyph {
+                let size = glyph.size
+                glyph.draw(in: NSRect(x: 22, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
+            }
             NSColor.black.set()
             let circle = NSBezierPath(ovalIn: rect.insetBy(dx: 1.6, dy: 1.6))
             circle.lineWidth = 1.3
@@ -405,6 +415,7 @@ enum SelfTest {
     /// Set by checks that can fail outright; `--selftest` then exits with status 1.
     static var failed = false
 
+    @MainActor
     static func run() {
         checkDrift()
         print("sound        rms   peak  repeat  (old loop → repeat 1.00; lower = less repetitive)")
@@ -421,6 +432,8 @@ enum SelfTest {
             print("  " + levels.sorted { $0.value > $1.value }.compactMap { Sound.byID[$0.key]?.name }.joined(separator: " + "))
         }
         reportIntents()
+        reportChime()
+        if !checkPomodoro() { failed = true }
     }
 
     /// Checks the App Intents metadata that build.sh puts into the bundle: every intent is there,
@@ -552,6 +565,101 @@ enum SelfTest {
         print("")
     }
 
+    /// The Pomodoro cue: decodes, has a soft tail, no NaN, no clipping.
+    private static func reportChime() {
+        print("\nПомодоро, сигнал (чаша):")
+        for pitch in [1.0, 0.84] {
+            guard let buffer = try? Chime.buffer(pitch: pitch), let data = buffer.floatChannelData else {
+                print("  FAIL chime pitch \(pitch)")
+                continue
+            }
+            let n = Int(buffer.frameLength)
+            var peak: Float = 0, sum: Double = 0, broken = false
+            for i in 0..<n {
+                let v = data[0][i]
+                if !v.isFinite { broken = true }
+                peak = max(peak, abs(v))
+                sum += Double(v * v)
+            }
+            print(String(format: "  pitch %.2f  %.1fs  rms %.3f  peak %.2f  last %.4f %@", pitch, Double(n) / buffer.format.sampleRate,
+                         sqrt(sum / Double(n)), peak, abs(data[0][n - 1]), (broken ? "NaN!" : "") as NSString))
+        }
+    }
+
+    /// Pomodoro state machine: phase order, long breaks, timing math, and that the user's own mix
+    /// comes back exactly after a break.
+    @MainActor
+    private static func checkPomodoro() -> Bool {
+        var failures: [String] = []
+        func expect(_ ok: Bool, _ what: String) { if !ok { failures.append(what) } }
+
+        let plan = PomodoroPlan.standard
+        let order = (0..<16).map { plan.phase(at: $0) }
+        let cycle: [PomodoroPhase] = [.focus, .shortBreak, .focus, .shortBreak, .focus, .shortBreak, .focus, .longBreak]
+        expect(order == cycle + cycle, "phase order \(order)")
+        expect(plan.duration(of: .focus) == 25 * 60 && plan.duration(of: .shortBreak) == 5 * 60
+               && plan.duration(of: .longBreak) == 15 * 60, "25/5/15 durations")
+        for p in PomodoroPlan.presets {
+            expect(p.longBreak > p.shortBreak && p.focus > p.longBreak, "plan \(p.id) proportions")
+        }
+
+        // On time: each phase starts exactly where the last one ended; one full set = 130 min.
+        let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        var state = PomodoroState(plan: plan, start: t0)
+        expect(state.end == t0 + 25 * 60 && state.round == 1, "first focus")
+        var rounds: [Int] = []
+        for _ in 0..<8 {
+            rounds.append(state.round)
+            state = state.advanced(at: state.end + 0.5)   // the tick lands a bit late
+        }
+        expect(rounds == [1, 1, 2, 2, 3, 3, 4, 4], "rounds \(rounds)")
+        expect(state.phase == .focus && state.round == 1, "second set starts with focus 1")
+        expect(abs(state.end.timeIntervalSince(t0) - (130 + 25) * 60) < 0.001,
+               "130 min per set, got \(state.end.timeIntervalSince(t0) / 60)")
+        expect(state.remaining(at: state.end - 90) == 90 && state.remaining(at: state.end + 3) == 0, "remaining")
+
+        // Slept through the end: the next phase starts now, not in the past.
+        let late = state.end + 3600
+        let woke = state.advanced(at: late)
+        expect(woke.phase == .shortBreak && woke.end == late + 5 * 60, "after sleep")
+        // Skipped early: the next phase starts now and runs its full length.
+        let early = state.end - 600
+        expect(state.advanced(at: early).end == early + 5 * 60, "skip")
+
+        expect(countdownLabel(25 * 60) == "25:00" && countdownLabel(59.2) == "1:00"
+               && countdownLabel(0.4) == "0:01" && countdownLabel(5400) == "1:30:00", "countdown labels")
+
+        // The mix swap: break mix in, the user's exact mix (sounds + levels) back after.
+        MixStore.sandboxed = true
+        let store = MixStore()
+        store.cuesEnabled = false
+        store.setMaster(0)
+        store.apply(Mix(id: "t", name: "", emoji: "", levels: ["rain": 0.42, "wind": 0.33, "cafe": 0.5]))
+        let ownActive = store.active
+        let ownVolumes = store.volumes
+        store.setBreakMix("b.sea")
+        store.startPomodoro(plan)
+        expect(store.pomodoro?.phase == .focus && store.pomodoroRemaining != nil, "store starts in focus")
+        store.skipPomodoroPhase()
+        expect(store.pomodoro?.phase == .shortBreak, "store break")
+        expect(Set(store.active) == ["waves", "wind"] && store.volumes["wind"] == 0.2, "break mix playing: \(store.active)")
+        store.skipPomodoroPhase()
+        expect(store.active == ownActive && store.volumes == ownVolumes, "focus mix restored")
+        store.skipPomodoroPhase()
+        store.setBreakMix(MixStore.silence)
+        expect(store.active.isEmpty, "silent break")
+        store.startTimer(minutes: 15)   // the sleep timer takes over and brings the mix back
+        expect(store.pomodoro == nil && store.timerRemaining != nil && store.active == ownActive,
+               "sleep timer replaces Pomodoro")
+        store.startPomodoro()
+        expect(store.timerRemaining == nil && store.pomodoro != nil, "Pomodoro replaces sleep timer")
+        store.stopAll()
+
+        print("\nПомодоро: " + (failures.isEmpty ? "OK" : "FAIL"))
+        failures.forEach { print("  ✗ " + $0) }
+        return failures.isEmpty
+    }
+
     /// Renders 150 s of the live generator and checks how similar the audio is one old-loop-length
     /// apart. A plain loop is identical there (correlation 1.0); a good texture is near 0.
     private static func reportTexture(_ sound: Sound) {
@@ -622,17 +730,21 @@ enum SelfTest {
         ])
         store.apply(Mix.presets[0])
         store.setMaster(store.master)
-        for (scheme, suffix) in [(ColorScheme.light, "light"), (.dark, "dark")] {
-            let view = ContentView()
-                .environmentObject(store)
-                .background(Color(nsColor: .windowBackgroundColor))
-                .environment(\.colorScheme, scheme)
-            let renderer = ImageRenderer(content: view)
-            renderer.scale = 2
-            guard let image = renderer.cgImage else { continue }
-            let rep = NSBitmapImageRep(cgImage: image)
-            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(prefix)-\(suffix).png"))
+        func renderPanel(_ name: String, schemes: [ColorScheme] = [.light, .dark]) {
+            for scheme in schemes {
+                let view = ContentView()
+                    .environmentObject(store)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                    .environment(\.colorScheme, scheme)
+                let renderer = ImageRenderer(content: view)
+                renderer.scale = 2
+                guard let image = renderer.cgImage else { continue }
+                let rep = NSBitmapImageRep(cgImage: image)
+                try? rep.representation(using: .png, properties: [:])?
+                    .write(to: URL(fileURLWithPath: "\(prefix)\(name)-\(scheme == .dark ? "dark" : "light").png"))
+            }
         }
+        renderPanel("")
         // About window and the menu bar icon (paused + two moments of the playing sway).
         let about = ImageRenderer(content: AboutView().background(Color(nsColor: .windowBackgroundColor)))
         about.scale = 2
@@ -641,8 +753,10 @@ enum SelfTest {
                 .write(to: URL(fileURLWithPath: "\(prefix)-about.png"))
         }
         let icons = ImageRenderer(content: HStack(spacing: 12) {
-            ForEach([(0.0, false), (0.3, true), (0.9, true)], id: \.0) { item in
-                Image(nsImage: StatusIcon.image(phase: item.0, playing: item.1)).resizable().frame(width: 72, height: 72)
+            ForEach([(0.0, false, nil), (0.3, true, nil), (0.9, true, nil),
+                     (0.5, true, "scope"), (0.7, true, "cup.and.saucer")], id: \.0) { item in
+                Image(nsImage: StatusIcon.image(phase: item.0, playing: item.1, badge: item.2))
+                    .resizable().aspectRatio(contentMode: .fit).frame(height: 72)
             }
         }.padding(8).background(Color.white))
         icons.scale = 1
@@ -650,6 +764,35 @@ enum SelfTest {
             try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
                 .write(to: URL(fileURLWithPath: "\(prefix)-icon.png"))
         }
+        // Menu bar items at their real size (2× = retina), light and dark bar, as the system tints templates.
+        let bar = ImageRenderer(content: VStack(spacing: 0) {
+            ForEach([(Color(white: 0.92), Color.black), (Color(white: 0.16), Color.white)], id: \.1) { colors in
+                HStack(spacing: 14) {
+                    ForEach([(nil, "29:59"), ("scope", "24:13"), ("cup.and.saucer", "4:59")], id: \.1) { item in
+                        HStack(spacing: 4) {
+                            Image(nsImage: StatusIcon.image(phase: 0.4, playing: true, badge: item.0)).renderingMode(.template)
+                            Text(item.1).font(.system(size: NSFont.systemFontSize).monospacedDigit()).fixedSize()
+                        }
+                    }
+                }
+                .foregroundStyle(colors.1)
+                .padding(.horizontal, 10)
+                .frame(height: 24)
+                .background(colors.0)
+            }
+        })
+        bar.scale = 2
+        if let image = bar.cgImage {
+            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?
+                .write(to: URL(fileURLWithPath: "\(prefix)-menubar.png"))
+        }
+
+        // Pomodoro: the footer pill in focus, then in a break (the break mix is in the list).
+        store.cuesEnabled = false
+        store.startPomodoro(.standard)
+        renderPanel("-pomodoro", schemes: [.light])
+        store.skipPomodoroPhase()
+        renderPanel("-pomodoro-break", schemes: [.dark])
     }
 
     /// Plays every preset through the real engine for a moment and reports the output level.
@@ -661,7 +804,17 @@ enum SelfTest {
         let mixes = Mix.presets + [Mix(id: "n", name: "Белый шум", emoji: "", levels: ["white": 0.5]), Mix(id: "b", name: "Чаша", emoji: "", levels: ["bowl": 0.6]), Mix(id: "c", name: "Кот+винил", emoji: "", levels: ["cat": 0.6, "vinyl": 0.5]), Mix(id: "w", name: "Киты", emoji: "", levels: ["whale": 0.7]), Mix(id: "h", name: "Сердце", emoji: "", levels: ["heartbeat": 0.6])]
         var index = 0
         func next() {
-            guard index < mixes.count else { store.stopAll(); exit(0) }
+            guard index < mixes.count else {
+                // Last: the Pomodoro cue alone, over silence.
+                store.stopAll()
+                store.debugCue()
+                store.debugMeasure(after: 1.0, seconds: 2.0) { rms, channels in
+                    print(String(format: "%-12@ channels %d  output rms %.3f (%.1f dBFS)", "Сигнал помодоро" as NSString,
+                                 channels, rms, 20 * log10(max(rms, 1e-6))))
+                    exit(0)
+                }
+                return
+            }
             let mix = mixes[index]
             index += 1
             store.apply(mix)

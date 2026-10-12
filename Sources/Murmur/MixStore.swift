@@ -102,6 +102,12 @@ final class MixStore: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var userMixes: [Mix]
     @Published private(set) var timerRemaining: TimeInterval?
+    /// Running Pomodoro (nil = off). Mutually exclusive with the sleep timer.
+    @Published private(set) var pomodoro: PomodoroState?
+    @Published private(set) var pomodoroRemaining: TimeInterval?
+    @Published private(set) var pomodoroPlan: PomodoroPlan
+    /// What plays during breaks: a mix id or `MixStore.silence`.
+    @Published private(set) var breakMixID: String
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published var theme: PanelTheme {
         didSet { if !Self.sandboxed { defaults.set(theme.rawValue, forKey: "theme") } }
@@ -129,11 +135,20 @@ final class MixStore: ObservableObject {
     private var timerEnd: Date?
     private var timerTick: Timer?
     private var timerFade: Double = 1
+    /// The user's own mix, put aside while a Pomodoro break plays; restored when the break ends.
+    private var focusMix: (active: [String], volumes: [String: Double])?
+    private var pomodoroTick: Timer?
+    /// Off in tests: no singing bowl at phase changes.
+    var cuesEnabled = true
     private var hotKey: HotKey?
     private var wakeObserver: NSObjectProtocol?
 
     static let timerOptions = [15, 30, 45, 60, 90, 120]
     static let timerFadeOut: TimeInterval = 45
+    static let silence = "silence"
+    static let defaultBreakMix = "b.sea"
+    /// Focus mix ⇄ break mix crossfade, seconds.
+    static let pomodoroCrossfade: Double = 6
 
     init() {
         active = (defaults.stringArray(forKey: "active") ?? ["rain"]).filter { Sound.byID[$0] != nil }
@@ -145,7 +160,12 @@ final class MixStore: ObservableObject {
         accent = savedAccent
         Theme.accent = savedAccent
         livingMix = defaults.object(forKey: "livingMix") as? Bool ?? true
-        userMixes = Self.savedUserMixes()
+        let savedMixes = Self.savedUserMixes()
+        userMixes = savedMixes
+        pomodoroPlan = PomodoroPlan.byID(defaults.string(forKey: "pomodoroPlan"))
+        let savedBreak = defaults.string(forKey: "pomodoroBreak") ?? Self.defaultBreakMix
+        let knownIDs = Set((Mix.presets + savedMixes).map(\.id)).union([Self.silence])
+        breakMixID = knownIDs.contains(savedBreak) ? savedBreak : Self.defaultBreakMix
         audio.masterVolume = Self.curve(master)
         audio.livingMix = livingMix
 
@@ -184,13 +204,12 @@ final class MixStore: ObservableObject {
         return isPlaying ? line : L("Пауза · ", "Paused · ") + line
     }
 
-    var timerLabel: String? {
-        guard let left = timerRemaining else { return nil }
-        let s = Int(left.rounded(.up))
-        return s >= 3600
-            ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60)
-            : String(format: "%d:%02d", s / 60, s % 60)
-    }
+    var timerLabel: String? { timerRemaining.map(countdownLabel) }
+
+    var pomodoroLabel: String? { pomodoroRemaining.map(countdownLabel) }
+
+    /// The mix that plays during Pomodoro breaks; nil = silence.
+    var breakMix: Mix? { allMixes.first { $0.id == breakMixID } }
 
     // MARK: Playback
 
@@ -250,6 +269,7 @@ final class MixStore: ObservableObject {
     }
 
     func stopAll() {
+        endPomodoro()
         isPlaying = false
         active = []
         sync(fade: 0.6)
@@ -343,6 +363,7 @@ final class MixStore: ObservableObject {
 
     func delete(_ mix: Mix) {
         userMixes.removeAll { $0.id == mix.id }
+        if breakMixID == mix.id { setBreakMix(Self.defaultBreakMix) }
         persist()
         mixesChanged()
     }
@@ -360,6 +381,7 @@ final class MixStore: ObservableObject {
     // MARK: Sleep timer
 
     func startTimer(minutes: Int) {
+        stopPomodoro()
         timerEnd = Date().addingTimeInterval(TimeInterval(minutes * 60))
         if !isPlaying { togglePlay() }
         timerTick?.invalidate()
@@ -401,6 +423,113 @@ final class MixStore: ObservableObject {
         applyMaster()
     }
 
+    // MARK: Pomodoro
+
+    /// Starts (or restarts) Pomodoro from a fresh focus round. Replaces the sleep timer.
+    func startPomodoro(_ plan: PomodoroPlan? = nil) {
+        if let plan { setPomodoroPlan(plan, restart: false) }
+        cancelTimer()
+        restoreFocusMix()
+        pomodoro = PomodoroState(plan: pomodoroPlan, start: Date())
+        if !isPlaying { togglePlay() }
+        pomodoroTick?.invalidate()
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tickPomodoro() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pomodoroTick = timer
+        cue(for: .focus)
+        tickPomodoro()
+    }
+
+    /// Stops Pomodoro; during a break the user's focus mix fades back in.
+    func stopPomodoro() {
+        guard pomodoro != nil else { return }
+        restoreFocusMix()
+        endPomodoro()
+    }
+
+    /// Ends the current phase now: «Пропустить перерыв» / «Перерыв сейчас».
+    func skipPomodoroPhase() {
+        guard let state = pomodoro else { return }
+        enter(state.advanced(at: Date()), from: state)
+        tickPomodoro()
+    }
+
+    /// Remembers the rhythm; a running Pomodoro restarts with it.
+    func setPomodoroPlan(_ plan: PomodoroPlan, restart: Bool = true) {
+        pomodoroPlan = plan
+        if !Self.sandboxed { defaults.set(plan.id, forKey: "pomodoroPlan") }
+        if restart, pomodoro != nil { startPomodoro() }
+    }
+
+    /// Picks the break sound; if a break is on right now, it crossfades to it.
+    func setBreakMix(_ id: String) {
+        breakMixID = id
+        if !Self.sandboxed { defaults.set(id, forKey: "pomodoroBreak") }
+        if focusMix != nil { playBreakMix() }
+    }
+
+    private func endPomodoro() {
+        pomodoroTick?.invalidate()
+        pomodoroTick = nil
+        pomodoro = nil
+        pomodoroRemaining = nil
+        focusMix = nil
+    }
+
+    private func tickPomodoro() {
+        guard let state = pomodoro else { return }
+        let now = Date()
+        if state.remaining(at: now) <= 0 {
+            enter(state.advanced(at: now), from: state)
+        }
+        pomodoroRemaining = pomodoro?.remaining(at: now)
+    }
+
+    private func enter(_ next: PomodoroState, from previous: PomodoroState) {
+        pomodoro = next
+        if next.phase.isBreak, !previous.phase.isBreak {
+            focusMix = (active, volumes)
+            playBreakMix()
+        } else if !next.phase.isBreak {
+            restoreFocusMix()
+        }
+        cue(for: next.phase)
+    }
+
+    /// Crossfades to the break mix. Play/pause is left alone: a paused mixer stays quiet.
+    private func playBreakMix() {
+        guard let focus = focusMix else { return }
+        volumes = focus.volumes
+        if let mix = breakMix {
+            active = Sound.all.map(\.id).filter { mix.levels[$0] != nil }
+            for (id, level) in mix.levels { volumes[id] = level }
+        } else {
+            active = []
+        }
+        sync(fade: Self.pomodoroCrossfade)
+    }
+
+    /// Brings back exactly the sounds and levels the user had before the break.
+    private func restoreFocusMix() {
+        guard let focus = focusMix else { return }
+        focusMix = nil
+        active = focus.active
+        volumes = focus.volumes
+        if active.isEmpty { isPlaying = false }
+        sync(fade: Self.pomodoroCrossfade)
+    }
+
+    /// One singing-bowl strike: lower for a break, brighter back to focus.
+    private func cue(for phase: PomodoroPhase) {
+        guard cuesEnabled, !SelfTest.isRendering else { return }
+        audio.playCue(pitch: phase.isBreak ? 0.84 : 1.0)
+    }
+
+    /// `--playtest`: the phase-change strike on its own.
+    func debugCue() { audio.playCue(pitch: 1.0) }
+
     func debugMeasure(after delay: Double, seconds: Double, completion: @escaping (Float, Int) -> Void) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [audio] in
             audio.measureOutput(seconds: seconds, completion: completion)
@@ -424,8 +553,9 @@ final class MixStore: ObservableObject {
 
     private func persist() {
         guard !Self.sandboxed else { return }
-        defaults.set(active, forKey: "active")
-        defaults.set(volumes, forKey: "volumes")
+        // During a Pomodoro break the saved mix stays the user's own, not the break mix.
+        defaults.set(focusMix?.active ?? active, forKey: "active")
+        defaults.set(focusMix?.volumes ?? volumes, forKey: "volumes")
         defaults.set(master, forKey: "master")
         if let data = try? JSONEncoder().encode(userMixes) {
             defaults.set(data, forKey: "userMixes")

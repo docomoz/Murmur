@@ -497,16 +497,28 @@ struct LineSlider: View {
 private struct FooterView: View {
     @EnvironmentObject private var store: MixStore
 
+    /// One pill for both timers (they never run together): it shows whichever is on.
+    private var timerPill: (symbol: String, text: String) {
+        if let state = store.pomodoro, let left = store.pomodoroLabel {
+            return (state.phase.symbol, "\(state.phase.shortTitle) \(left)")
+        }
+        if let left = store.timerLabel { return ("moon.zzz", left) }
+        return ("timer", L("Таймер", "Timer"))
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Button {
                 MenuBuilder.popUp(MenuBuilder.timer(store))
             } label: {
+                let pill = timerPill
                 HStack(spacing: 5) {
-                    Image(systemName: "moon.zzz")
-                    Text(store.timerLabel ?? L("Таймер сна", "Sleep Timer"))
+                    Image(systemName: pill.symbol)
+                    Text(pill.text)
                         .monospacedDigit()
+                        .lineLimit(1)
                 }
+                .fixedSize()   // never «Перерыв 5…»: the spacer gives way, not the countdown
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.link)
                 .padding(.horizontal, 10)
@@ -572,19 +584,57 @@ enum MenuBuilder {
         return menu
     }
 
+    /// Sleep timer and Pomodoro share one menu: starting either one stops the other.
     static func timer(_ store: MixStore) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(.sectionHeader(title: L("Выключить звук через", "Stop Sound After")))
+        menu.addItem(.sectionHeader(title: L("Таймер сна: выключить звук через", "Sleep Timer: Stop Sound After")))
         for minutes in MixStore.timerOptions {
             let title = minutes < 60 ? L("\(minutes) минут", "\(minutes) minutes")
                 : minutes == 60 ? L("1 час", "1 hour") : minutes == 90 ? L("1,5 часа", "1.5 hours") : L("2 часа", "2 hours")
             menu.addItem(ActionMenuItem(title) { store.startTimer(minutes: minutes) })
         }
         if store.timerRemaining != nil {
-            menu.addItem(.separator())
-            menu.addItem(ActionMenuItem(L("Отменить таймер", "Cancel Timer")) { store.cancelTimer() })
+            menu.addItem(ActionMenuItem(L("Отменить таймер сна", "Cancel Sleep Timer")) { store.cancelTimer() })
         }
+
+        menu.addItem(.separator())
+        menu.addItem(.sectionHeader(title: L("Помодоро", "Pomodoro")))
+        if let state = store.pomodoro {
+            let now = state.phase == .focus
+                ? L("Сейчас: фокус, \(state.round) из \(PomodoroPlan.longEvery)", "Now: focus, \(state.round) of \(PomodoroPlan.longEvery)")
+                : L("Сейчас: ", "Now: ") + state.phase.title.lowercased()
+            menu.addItem(ActionMenuItem(now, enabled: false) {})
+            menu.addItem(ActionMenuItem(state.phase.isBreak ? L("Пропустить перерыв", "Skip Break") : L("Перерыв сейчас", "Take a Break Now")) {
+                store.skipPomodoroPhase()
+            })
+            menu.addItem(ActionMenuItem(L("Остановить помодоро", "Stop Pomodoro")) { store.stopPomodoro() })
+        } else {
+            menu.addItem(ActionMenuItem(L("Начать: фокус \(store.pomodoroPlan.focus) мин", "Start: \(store.pomodoroPlan.focus) min Focus")) {
+                store.startPomodoro()
+            })
+        }
+
+        let rhythm = NSMenuItem(title: L("Ритм", "Rhythm"), action: nil, keyEquivalent: "")
+        rhythm.submenu = NSMenu()
+        for plan in PomodoroPlan.presets {
+            rhythm.submenu?.addItem(ActionMenuItem(plan.title, checked: store.pomodoroPlan == plan) { store.setPomodoroPlan(plan) })
+        }
+        menu.addItem(rhythm)
+
+        let breakSound = NSMenuItem(title: L("Звук перерыва", "Break Sound"), action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+        sub.addItem(ActionMenuItem(L("🔇  Тишина", "🔇  Silence"), checked: store.breakMixID == MixStore.silence) {
+            store.setBreakMix(MixStore.silence)
+        })
+        sub.addItem(.separator())
+        for mix in store.allMixes {
+            if mix.id == store.userMixes.first?.id { sub.addItem(.separator()) }
+            sub.addItem(ActionMenuItem("\(mix.emoji)  \(mix.name)", checked: store.breakMixID == mix.id) { store.setBreakMix(mix.id) })
+        }
+        breakSound.submenu = sub
+        menu.addItem(breakSound)
         return menu
     }
 

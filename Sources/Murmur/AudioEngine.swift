@@ -27,6 +27,9 @@ final class AudioEngine {
     private let cache = NSCache<NSString, AVAudioPCMBuffer>()
     private var observers: [NSObjectProtocol] = []
     private let driftSwitch = DriftSwitch()
+    /// One-shot cues (Pomodoro bowl strikes) still ringing; they keep the engine awake.
+    private var cues: [AVAudioPlayerNode] = []
+    private var cueBuffers: [Double: AVAudioPCMBuffer] = [:]
 
     init() {
         cache.totalCostLimit = 400 * 1024 * 1024
@@ -78,8 +81,52 @@ final class AudioEngine {
         startRamp()
     }
 
+    /// Plays one singing-bowl strike over the mix (through the master volume), then lets it go.
+    func playCue(pitch: Double, gain: Float = 0.22) {
+        if let buffer = cueBuffers[pitch] {
+            startCue(buffer, gain: gain)
+            return
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let buffer = try? Chime.buffer(pitch: pitch) else { return }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.cueBuffers[pitch] = buffer
+                self.startCue(buffer, gain: gain)
+            }
+        }
+    }
+
+    private func startCue(_ buffer: AVAudioPCMBuffer, gain: Float) {
+        let player = AVAudioPlayerNode()
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: buffer.format)
+        player.volume = gain
+        ensureRunning()
+        cues.append(player)
+        player.scheduleBuffer(buffer, at: nil, options: [], completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            DispatchQueue.main.async { self?.finishCue(player) }
+        }
+        player.play()
+    }
+
+    private func finishCue(_ player: AVAudioPlayerNode) {
+        guard let i = cues.firstIndex(where: { $0 === player }) else { return }
+        cues.remove(at: i)
+        player.stop()
+        engine.detach(player)
+        if channels.isEmpty && cues.isEmpty { scheduleIdleStop() }
+    }
+
     /// Restart output after sleep, device switches (AirPods in/out) and the like.
     func recover() {
+        // A cue cut off by the restart is simply dropped.
+        let ringing = cues
+        cues = []
+        for player in ringing {
+            player.stop()
+            engine.detach(player)
+        }
         guard !channels.isEmpty else { return }
         engine.stop()
         wireOutput()
@@ -240,7 +287,7 @@ final class AudioEngine {
     private func scheduleIdleStop() {
         idleStop?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.channels.isEmpty else { return }
+            guard let self, self.channels.isEmpty, self.cues.isEmpty else { return }
             self.engine.stop()
         }
         idleStop = work
@@ -276,6 +323,46 @@ final class NoiseGenerator: RealtimeGenerator {
             guard let out = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
             for i in 0..<frames { out[i] = Float(random.next() * 2 - 1) * 0.15 }
         }
+    }
+}
+
+/// Pomodoro phase cue: the first strike of the singing-bowl recording, shortened to ~11 s with a
+/// soft tail and optionally pitched (resampled) — never a system beep.
+enum Chime {
+    static let seconds = 11.0
+    static let fadeOut = 4.0
+
+    static func buffer(pitch: Double) throws -> AVAudioPCMBuffer {
+        let src = try SourceLoader.load("bowl", boost: 1)
+        guard let data = src.floatChannelData else { throw LoopBuilder.Failure.empty }
+        let sr = src.format.sampleRate
+        let n = Int(src.frameLength)
+        let channels = Int(src.format.channelCount)
+        let length = min(Int(Double(n - 1) / pitch), Int(seconds * sr))
+        let fadeIn = Int(0.005 * sr)
+        let tail = Int(fadeOut * sr)
+        guard length > tail, let format = AVAudioFormat(standardFormatWithSampleRate: sr, channels: 2),
+              let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(length)),
+              let dst = out.floatChannelData else { throw LoopBuilder.Failure.empty }
+        out.frameLength = AVAudioFrameCount(length)
+        for c in 0..<2 {
+            let s = data[min(c, channels - 1)]
+            let o = dst[c]
+            for i in 0..<length {
+                let position = Double(i) * pitch
+                let j = Int(position)
+                let f = Float(position - Double(j))
+                var v = s[j] + (s[j + 1] - s[j]) * f
+                if i < fadeIn { v *= Float(i) / Float(fadeIn) }
+                let left = length - i
+                if left < tail {
+                    let t = Float(left) / Float(tail)
+                    v *= t * t
+                }
+                o[i] = v
+            }
+        }
+        return out
     }
 }
 
