@@ -115,6 +115,16 @@ final class MixStore: ObservableObject {
             Theme.accent = accent
         }
     }
+    /// «Тише во время созвонов»: fade out while another app records from a microphone.
+    @Published var duckDuringCalls: Bool {
+        didSet {
+            if !Self.sandboxed { defaults.set(duckDuringCalls, forKey: "duckDuringCalls") }
+            updateCallWatch()
+        }
+    }
+    /// A call is going on (or just ended) and Murmur has stepped back. The saved volumes, the mix
+    /// and play state are untouched — the duck is a separate gain on top of `master`.
+    @Published private(set) var isDucked = false
 
     private let audio = AudioEngine()
     private let defaults = UserDefaults.standard
@@ -123,6 +133,9 @@ final class MixStore: ObservableObject {
     private var timerFade: Double = 1
     private var hotKey: HotKey?
     private var wakeObserver: NSObjectProtocol?
+    private var duck = DuckEnvelope()
+    private var duckTimer: Timer?
+    private var mic: MicMonitor?
 
     static let timerOptions = [15, 30, 45, 60, 90, 120]
     static let timerFadeOut: TimeInterval = 45
@@ -136,6 +149,7 @@ final class MixStore: ObservableObject {
         let savedAccent = AccentChoice(rawValue: defaults.string(forKey: "accent") ?? "") ?? .system
         accent = savedAccent
         Theme.accent = savedAccent
+        duckDuringCalls = defaults.object(forKey: "duckDuringCalls") as? Bool ?? true
         if let data = defaults.data(forKey: "userMixes"), let mixes = try? JSONDecoder().decode([Mix].self, from: data) {
             userMixes = mixes
         } else {
@@ -150,6 +164,13 @@ final class MixStore: ObservableObject {
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.audio.recover() }
+        }
+        // Test modes must not change their own output level because someone is on a call.
+        if !Self.sandboxed {
+            mic = MicMonitor { [weak self] inUse in
+                MainActor.assumeIsolated { self?.micChanged(inUse) }
+            }
+            updateCallWatch()
         }
     }
 
@@ -288,7 +309,7 @@ final class MixStore: ObservableObject {
     }
 
     private func applyMaster() {
-        audio.masterVolume = Self.curve(master) * Float(timerFade)
+        audio.masterVolume = Self.curve(master) * Float(timerFade) * duck.gain
     }
 
     /// Ears hear loudness logarithmically; a power curve makes sliders feel even.
@@ -371,6 +392,50 @@ final class MixStore: ObservableObject {
             audio.measureOutput(seconds: seconds, completion: completion)
         }
     }
+
+    // MARK: Calls
+
+    private func updateCallWatch() {
+        guard let mic else { return }
+        if duckDuringCalls {
+            mic.start()
+        } else {
+            mic.stop()
+            duck.cancel(at: Self.now)
+            runDuck()
+        }
+    }
+
+    private func micChanged(_ inUse: Bool) {
+        guard duckDuringCalls else { return }
+        duck.update(micInUse: inUse, at: Self.now)
+        runDuck()
+    }
+
+    /// Glides the duck gain at 60 Hz while it's moving (or waiting out the hold), then sleeps.
+    private func runDuck() {
+        stepDuck()
+        guard !duck.isSettled, duckTimer == nil else { return }
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stepDuck() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        duckTimer = timer
+    }
+
+    private func stepDuck() {
+        duck.advance(to: Self.now)
+        if isDucked != duck.ducked { isDucked = duck.ducked }
+        // Resume before the fade-in starts; pause only once fully silent.
+        audio.isPaused = duck.isSilent
+        applyMaster()
+        if duck.isSettled {
+            duckTimer?.invalidate()
+            duckTimer = nil
+        }
+    }
+
+    private static var now: Double { ProcessInfo.processInfo.systemUptime }
 
     // MARK: System
 

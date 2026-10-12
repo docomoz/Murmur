@@ -57,6 +57,7 @@ Sources/Murmur/
   MurmurApp.swift             @main (чистый AppKit), AppDelegate: NSStatusItem + GlassPanel, окно-фолбэк, GlassHost; SelfTest
   Sound.swift                 модель звука и каталог Sound.all (28 шт.), категории, Color(hex:)
   AudioEngine.swift           AVAudioEngine-граф, каналы с плавной громкостью, NoiseGenerator (шумы/тоны), LoopBuilder (петля часов + общие хелперы)
+  CallDucking.swift           «Тише во время созвонов»: MicMonitor (кто пишет с микрофона, CoreAudio) и DuckEnvelope (огибающая приглушения)
   Texture.swift               гранулярный движок: TextureGenerator / GrainLayer, HeartbeatGenerator, SourceLoader, FastRandom
   MixStore.swift              состояние (ObservableObject): активные звуки, громкости, пресеты, таймер сна, хоткей, автозапуск
   Views.swift                 весь UI (панель, ленты, строки, слайдеры) + нативные NSMenu (MenuBuilder, ActionMenuItem)
@@ -80,6 +81,12 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 - **Канал** = `AVAudioSourceNode` с генератором реального времени (`RealtimeGenerator`: текстура, шум, тон, сердце; 48 кГц стерео) или — только для часов — `AVAudioPlayerNode` с точной петлёй. Каналы создаются лениво при первом `setTarget(gain > 0)` и удаляются, когда громкость доехала до 0.
 - **Плавность**: у каждого канала `gain → target` с линейной скоростью; таймер 60 Гц в `RunLoop.main(.common)`. Клик/вкл/выкл никогда не щёлкает.
 - **Простой**: через 2 с без каналов движок останавливается (CPU, сон Mac). `recover()` перезапускает граф после смены устройства вывода / пробуждения (`AVAudioEngineConfigurationChange`, `NSWorkspace.didWakeNotification`).
+- **«Тише во время созвонов»** (`CallDucking.swift`, меню ⚙, по умолчанию включено, ключ `duckDuringCalls`). Когда другое приложение пишет с микрофона (Zoom, Meet в браузере, Telegram, FaceTime…), Murmur за 1,5 с уходит в тишину; после освобождения микрофона ждёт 2,5 с (чтобы mute/unmute не «качал» звук) и за 3 с возвращается. Это отдельный множитель `duck.gain` в `MixStore.applyMaster` (`master × таймер сна × duck`) — громкости, микс и `isPlaying` не меняются.
+  - `MicMonitor` сам микрофон **никогда не открывает** (разрешение не нужно): читает HAL-объекты процессов (macOS 14+) — `kAudioHardwarePropertyProcessObjectList` и у каждого `kAudioProcessPropertyIsRunningInput` (то же, что зажигает оранжевую точку), кроме своего PID. `kAudioDevicePropertyDeviceIsRunningSomewhere` сигналом быть не может: у AirPods/гарнитур вход и выход — одно устройство, и его «запускает» собственный звук Murmur; флаги устройств (все устройства со входом) служат только поводом перепроверить процессы. Слушатели переподключаются при смене списков процессов/устройств; перепроверка — сразу и через 0,4 с.
+  - `DuckEnvelope` — чистая структура от времени (smoothstep-гейн), `--selftest` прогоняет её («duck envelope: ok») и печатает, кто сейчас пишет с микрофона.
+  - Когда приглушение дошло до 0, движок ставится на паузу (`AudioEngine.isPaused`: `engine.pause()`, `ensureRunning`/`recover()` его не запускают); перед возвратом звука — `recover()` (за звонок устройство вывода часто меняется: AirPods → режим гарнитуры). Простой (стоп через 2 с без каналов) работает как раньше.
+  - Индикация: в строке меню полоски замирают низко, в футере панели вместо динамика у общей громкости — значок микрофона цвета акцента. В тестовых режимах (`sandboxed`) монитор не запускается.
+  - Риск: приложения, которые держат микрофон постоянно (диктовка, рекордеры встреч вроде Plaud), будут держать Murmur приглушённым — тогда пункт меню можно выключить.
 - **Гранулярные текстуры вместо петель** (`Texture.swift`) — главное средство против повторов. Раньше каждый звук был одной записью по кругу (у китов круг 27,5 с, у клавиатуры 9,5 с — ухо это слышало). Теперь:
   - `SourceLoader` декодирует запись (до 120 с), обрезает тишину по краям, нормализует громкость (`LoopBuilder.loudnessGain`: `min(0.13/RMS, 0.8/p99.9, 25) × boost`) + `softClip`. Буферы кэшируются (`NSCache`, ключ `src:<файл>:<boost>`).
   - У звука есть `layers: [Layer]` (`Sound.swift`). Каждый `GrainLayer` непрерывно запускает «гранулы»: случайный фрагмент записи случайной длины (`length`), со случайной скоростью/тоном (`rate`, линейная интерполяция), громкостью (`gainJitterDB`), панорамой (`pan`), случайным зеркалированием L/R (`swapChannels`). Соседние гранулы склеиваются равномощным кроссфейдом (`fade`); недавние позиции не повторяются. `gap > 0` делает слой разреженным (редкие события с паузами).
@@ -100,7 +107,7 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 - Таймер сна: 15/30/45/60/90/120 мин, последние 45 с громкость плавно уходит в 0, отсчёт показывается в строке меню.
 - Глобальный хоткей **⌃⌥P** (Carbon `RegisterEventHotKey`, не требует прав Accessibility).
 - Автозапуск: `SMAppService.mainApp` (надёжно работает из `/Applications`).
-- Персистентность: ключи `active`, `volumes`, `master`, `userMixes`, `launchedBefore`.
+- Персистентность: ключи `active`, `volumes`, `master`, `userMixes`, `launchedBefore`, `duckDuringCalls`.
 - `statusLine` и `suggestedMixName` — `statusLine` после редизайна в UI не используется (можно удалить).
 
 ### UI (`Views.swift`)

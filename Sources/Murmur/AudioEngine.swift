@@ -54,6 +54,20 @@ final class AudioEngine {
         set { engine.mainMixerNode.outputVolume = newValue }
     }
 
+    /// Paused while a call keeps Murmur fully ducked: no audio IO, no CPU, no hold on a headset
+    /// that just switched to its call profile. Channels keep their state; resuming goes through
+    /// `recover()`, since the output device often changes during a call (AirPods → headset mode).
+    var isPaused = false {
+        didSet {
+            guard isPaused != oldValue else { return }
+            if isPaused {
+                if engine.isRunning { engine.pause() }
+            } else {
+                recover()
+            }
+        }
+    }
+
     /// Glide `sound` to `gain` over `fade` seconds, loading it on first use.
     func setTarget(_ sound: Sound, gain: Float, fade: Double) {
         let ch: Channel
@@ -72,7 +86,7 @@ final class AudioEngine {
 
     /// Restart output after sleep, device switches (AirPods in/out) and the like.
     func recover() {
-        guard !channels.isEmpty else { return }
+        guard !channels.isEmpty, !isPaused else { return }
         engine.stop()
         wireOutput()
         do { try engine.start() } catch { return }
@@ -113,7 +127,7 @@ final class AudioEngine {
     private func ensureRunning() {
         idleStop?.cancel()
         idleStop = nil
-        if !engine.isRunning {
+        if !engine.isRunning && !isPaused {
             engine.prepare()
             try? engine.start()
         }
