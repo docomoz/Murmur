@@ -220,7 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                                   backing: .buffered, defer: false)
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden
-            window.title = "О Murmur"
+            window.title = L("О Murmur", "About Murmur")
             window.isMovableByWindowBackground = true
             window.isReleasedWhenClosed = false
             let hosting = NSHostingView(rootView: AboutView())

@@ -237,7 +237,7 @@ private struct PresetStrip: View {
 
     /// The most loved built-in mixes, one click away. The full list lives in the ☰ menu.
     private static let popular: [(id: String, title: String)] = [
-        ("b.cafe", "Кафе"), ("b.focus", "Фокус"), ("b.fire", "Костёр"), ("b.sea", "Море"),
+        ("b.cafe", L("Кафе", "Café")), ("b.focus", L("Фокус", "Focus")), ("b.fire", L("Костёр", "Campfire")), ("b.sea", L("Море", "Sea")),
     ]
 
     /// The strip runs edge to edge (glass tiles aren't clipped by a scroll view's bounds, so the
@@ -257,7 +257,7 @@ private struct PresetStrip: View {
 
     /// «Наугад» first, then your saved mixes (newest first), then the built-in favourites.
     private var items: [Item] {
-        [Item(id: "random", emoji: "🎲", title: "Наугад", kind: .random)]
+        [Item(id: "random", emoji: "🎲", title: L("Наугад", "Shuffle"), kind: .random)]
             + store.userMixes.reversed().map { Item(id: $0.id, emoji: $0.emoji, title: $0.name, kind: .mix($0)) }
             + Self.popular.compactMap { entry in
                 Mix.presets.first { $0.id == entry.id }.map { Item(id: $0.id, emoji: $0.emoji, title: entry.title, kind: .mix($0)) }
@@ -360,7 +360,7 @@ private struct PresetTile: View {
         .focusable(false)
         .contextMenu {
             if let onDelete {
-                Button("Удалить микс «\(title)»", role: .destructive, action: onDelete)
+                Button(L("Удалить микс «\(title)»", "Delete “\(title)”"), role: .destructive, action: onDelete)
             }
         }
     }
@@ -504,7 +504,7 @@ private struct FooterView: View {
             } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "moon.zzz")
-                    Text(store.timerLabel ?? "Таймер сна")
+                    Text(store.timerLabel ?? L("Таймер сна", "Sleep Timer"))
                         .monospacedDigit()
                 }
                 .font(.system(size: 11, weight: .semibold))
@@ -545,21 +545,21 @@ enum MenuBuilder {
     static func mixes(_ store: MixStore) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(.sectionHeader(title: "Готовые миксы"))
+        menu.addItem(.sectionHeader(title: L("Готовые миксы", "Mixes")))
         for mix in Mix.presets {
             menu.addItem(ActionMenuItem("\(mix.emoji)  \(mix.name)", checked: store.isPlaying && store.isCurrent(mix)) { store.apply(mix) })
         }
         if !store.userMixes.isEmpty {
             menu.addItem(.separator())
-            menu.addItem(.sectionHeader(title: "Мои миксы"))
+            menu.addItem(.sectionHeader(title: L("Мои миксы", "My Mixes")))
             for mix in store.userMixes {
                 menu.addItem(ActionMenuItem("\(mix.emoji)  \(mix.name)", checked: store.isPlaying && store.isCurrent(mix)) { store.apply(mix) })
             }
         }
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("Сохранить текущий микс…", enabled: !store.active.isEmpty) { promptSave(store) })
+        menu.addItem(ActionMenuItem(L("Сохранить текущий микс…", "Save Current Mix…"), enabled: !store.active.isEmpty) { promptSave(store) })
         if !store.userMixes.isEmpty {
-            let delete = NSMenuItem(title: "Удалить микс", action: nil, keyEquivalent: "")
+            let delete = NSMenuItem(title: L("Удалить микс", "Delete Mix"), action: nil, keyEquivalent: "")
             let sub = NSMenu()
             for mix in store.userMixes {
                 sub.addItem(ActionMenuItem("\(mix.emoji)  \(mix.name)") { store.delete(mix) })
@@ -568,21 +568,22 @@ enum MenuBuilder {
             menu.addItem(delete)
         }
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("🎲  Случайный микс") { store.randomMix() })
+        menu.addItem(ActionMenuItem(L("🎲  Случайный микс", "🎲  Shuffle")) { store.randomMix() })
         return menu
     }
 
     static func timer(_ store: MixStore) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(.sectionHeader(title: "Выключить звук через"))
+        menu.addItem(.sectionHeader(title: L("Выключить звук через", "Stop Sound After")))
         for minutes in MixStore.timerOptions {
-            let title = minutes < 60 ? "\(minutes) минут" : minutes == 60 ? "1 час" : minutes == 90 ? "1,5 часа" : "2 часа"
+            let title = minutes < 60 ? L("\(minutes) минут", "\(minutes) minutes")
+                : minutes == 60 ? L("1 час", "1 hour") : minutes == 90 ? L("1,5 часа", "1.5 hours") : L("2 часа", "2 hours")
             menu.addItem(ActionMenuItem(title) { store.startTimer(minutes: minutes) })
         }
         if store.timerRemaining != nil {
             menu.addItem(.separator())
-            menu.addItem(ActionMenuItem("Отменить таймер") { store.cancelTimer() })
+            menu.addItem(ActionMenuItem(L("Отменить таймер", "Cancel Timer")) { store.cancelTimer() })
         }
         return menu
     }
@@ -591,21 +592,21 @@ enum MenuBuilder {
         let menu = NSMenu()
         menu.autoenablesItems = false
 
-        let theme = NSMenuItem(title: "Тема", action: nil, keyEquivalent: "")
+        let theme = NSMenuItem(title: L("Тема", "Theme"), action: nil, keyEquivalent: "")
         theme.submenu = NSMenu()
         for option in PanelTheme.allCases {
             theme.submenu?.addItem(ActionMenuItem(option.title, checked: store.theme == option) { store.theme = option })
         }
         menu.addItem(theme)
 
-        let backdrop = NSMenuItem(title: "Подложка", action: nil, keyEquivalent: "")
+        let backdrop = NSMenuItem(title: L("Подложка", "Backdrop"), action: nil, keyEquivalent: "")
         backdrop.submenu = NSMenu()
         for option in PanelBackdrop.allCases {
             backdrop.submenu?.addItem(ActionMenuItem(option.title, checked: store.backdrop == option) { store.backdrop = option })
         }
         menu.addItem(backdrop)
 
-        let accent = NSMenuItem(title: "Акцент", action: nil, keyEquivalent: "")
+        let accent = NSMenuItem(title: L("Акцент", "Accent"), action: nil, keyEquivalent: "")
         accent.submenu = NSMenu()
         for option in AccentChoice.allCases {
             let item = ActionMenuItem(option.title, checked: store.accent == option) { store.accent = option }
@@ -615,12 +616,12 @@ enum MenuBuilder {
         menu.addItem(accent)
 
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("Открывать при входе в систему", checked: store.launchAtLogin) {
+        menu.addItem(ActionMenuItem(L("Открывать при входе в систему", "Open at Login"), checked: store.launchAtLogin) {
             store.setLaunchAtLogin(!store.launchAtLogin)
         })
         menu.addItem(.separator())
-        menu.addItem(ActionMenuItem("О Murmur") { (NSApp.delegate as? AppDelegate)?.showAbout() })
-        menu.addItem(ActionMenuItem("Выйти из Murmur") { NSApp.terminate(nil) })
+        menu.addItem(ActionMenuItem(L("О Murmur", "About Murmur")) { (NSApp.delegate as? AppDelegate)?.showAbout() })
+        menu.addItem(ActionMenuItem(L("Выйти из Murmur", "Quit Murmur")) { NSApp.terminate(nil) })
         return menu
     }
 
@@ -634,13 +635,13 @@ enum MenuBuilder {
 
     private static func promptSave(_ store: MixStore) {
         let alert = NSAlert()
-        alert.messageText = "Сохранить микс"
-        alert.informativeText = "Он появится в меню миксов слева вверху."
+        alert.messageText = L("Сохранить микс", "Save Mix")
+        alert.informativeText = L("Он появится первым в строке пресетов и в меню миксов.", "It will show up first in the presets strip and in the mixes menu.")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         field.placeholderString = store.suggestedMixName
         alert.accessoryView = field
-        alert.addButton(withTitle: "Сохранить")
-        alert.addButton(withTitle: "Отмена")
+        alert.addButton(withTitle: L("Сохранить", "Save"))
+        alert.addButton(withTitle: L("Отмена", "Cancel"))
         alert.window.initialFirstResponder = field
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
@@ -670,7 +671,7 @@ final class ActionMenuItem: NSMenuItem {
 struct AboutView: View {
     private var version: String {
         let info = Bundle.main.infoDictionary
-        return "Версия \(info?["CFBundleShortVersionString"] as? String ?? "1.0")"
+        return L("Версия ", "Version ") + (info?["CFBundleShortVersionString"] as? String ?? "1.0")
     }
 
     var body: some View {
@@ -693,14 +694,16 @@ struct AboutView: View {
                 .focusable(false)
                 .padding(.top, 8)
 
-            Text("Звуки природы для фокуса и сна\nпрямо в строке меню. ⌃⌥P — пауза\nиз любого приложения.")
+            Text(L("Звуки природы для фокуса и сна\nпрямо в строке меню. ⌃⌥P — пауза\nиз любого приложения.",
+                    "Nature sounds for focus and sleep\nright in your menu bar. ⌃⌥P pauses\nfrom any app."))
                 .font(.system(size: 12))
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 20)
 
-            Text("Записи — библиотека Moodist, лицензии Pixabay\nи CC0. Белый шум и сердцебиение\nсинтезируются в реальном времени.")
+            Text(L("Записи — библиотека Moodist, лицензии Pixabay\nи CC0. Белый шум и сердцебиение\nсинтезируются в реальном времени.",
+                    "Recordings: the Moodist library, Pixabay\nand CC0 licenses. White noise and heartbeat\nare synthesized in real time."))
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

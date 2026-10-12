@@ -117,7 +117,7 @@ Whales sing in three layers — the song, a distant pod and the deep ocean. Ever
 MIXES
 • Mix any sounds, each with its own volume
 • Ready-made mixes: Café, Focus, Campfire, Sea, Storm, Night Train, Library
-• "Surprise me" builds a scene that makes sense: a summer-night campfire, a rainy café, the deep sea with whales
+• "Shuffle" builds a scene that makes sense: a summer-night campfire, a rainy café, the deep sea with whales
 • Save your own mixes — they show up first in the preset strip
 
 FOR SLEEP AND FOCUS
@@ -139,9 +139,6 @@ Recordings come from the open Moodist library (Pixabay License and CC0).
 
 **What's New**: `First release on the App Store.`
 
-> The interface itself is in Russian for now. If the English listing matters, add an English UI first —
-> reviewers check that the description matches the app.
-
 ---
 
 ## Заметки для проверяющих (App Review Information → Notes), по-английски
@@ -153,13 +150,13 @@ Murmur is a menu bar app (LSUIElement, no Dock icon).
   (or as a regular window if the menu bar icon is hidden, e.g. behind the notch).
 - Afterwards, click the waveform icon in the menu bar to open the mixer.
 - Click a sound row to start it; drag the line under its name to change its volume.
-- The tiles under the play button are presets; "Наугад" (dice) builds a random scene.
+- The tiles under the play button are presets; "Shuffle" (dice) builds a random scene.
 - ⌃⌥P toggles playback from any app. Space toggles it while the mixer is open.
 - Gear icon: theme, backdrop, accent color, launch at login, About, Quit.
 
 No account, no network access and no data collection. All recordings are bundled
 (Moodist library, Pixabay License / CC0); white noise and heartbeat are synthesized in real time.
-The UI language is Russian.
+The UI follows the system language: Russian if it is the first language, English otherwise.
 ```
 
 ---
