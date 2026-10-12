@@ -26,6 +26,7 @@ final class AudioEngine {
     private var idleStop: DispatchWorkItem?
     private let cache = NSCache<NSString, AVAudioPCMBuffer>()
     private var observers: [NSObjectProtocol] = []
+    private let driftSwitch = DriftSwitch()
 
     init() {
         cache.totalCostLimit = 400 * 1024 * 1024
@@ -48,6 +49,13 @@ final class AudioEngine {
     }
 
     // MARK: Public
+
+    /// «Живой микс»: each generator channel's level slowly wanders around its target
+    /// (`Sound.drift`). Toggling glides in/out on the audio thread; no timer is involved.
+    var livingMix: Bool {
+        get { driftSwitch.enabled }
+        set { driftSwitch.enabled = newValue }
+    }
 
     var masterVolume: Float {
         get { engine.mainMixerNode.outputVolume }
@@ -123,10 +131,10 @@ final class AudioEngine {
         let sound = ch.sound
         switch sound.source {
         case .whiteNoise:
-            attach(ch, node: Self.makeNode(NoiseGenerator()), buffer: nil)
+            attach(ch, node: makeNode(NoiseGenerator(), for: sound), buffer: nil)
             return
         case .heartbeat:
-            attach(ch, node: Self.makeNode(HeartbeatGenerator()), buffer: nil)
+            attach(ch, node: makeNode(HeartbeatGenerator(), for: sound), buffer: nil)
             return
         case .file:
             if sound.region == nil {
@@ -166,7 +174,7 @@ final class AudioEngine {
                     return
                 }
                 guard self.channels[sound.id] === ch else { return }
-                self.attach(ch, node: Self.makeNode(generator), buffer: nil)
+                self.attach(ch, node: self.makeNode(generator, for: sound), buffer: nil)
             }
         }
     }
@@ -240,6 +248,15 @@ final class AudioEngine {
     }
 
     // MARK: Generators
+
+    /// Source node for a generator, wrapped in its sound's level drift when it has any.
+    /// (The clock is an `AVAudioPlayerNode` loop and never drifts.)
+    private func makeNode(_ generator: RealtimeGenerator, for sound: Sound) -> AVAudioSourceNode {
+        let wrapped: RealtimeGenerator = sound.drift > 0
+            ? DriftingGenerator(generator, depthDB: sound.drift, toggle: driftSwitch)
+            : generator
+        return Self.makeNode(wrapped)
+    }
 
     private static func makeNode(_ generator: RealtimeGenerator) -> AVAudioSourceNode {
         let format = AVAudioFormat(standardFormatWithSampleRate: TextureGenerator.sampleRate, channels: 2)!
