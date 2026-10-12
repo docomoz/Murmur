@@ -6,5 +6,20 @@
     <title>Murmur</title>
     <link>https://github.com/docomoz/Murmur</link>
     <language>ru</language>
+    <item>
+      <title>Murmur 1.11</title>
+      <pubDate>Mon, 12 Oct 2026 11:04:37 +0000</pubDate>
+      <link>https://github.com/docomoz/Murmur/releases/tag/v1.11</link>
+      <sparkle:version>12</sparkle:version>
+      <sparkle:shortVersionString>1.11</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description sparkle:format="markdown"><![CDATA[- **Тише во время созвонов.** Когда идёт звонок (Zoom, Meet, Telegram, Kontur Talk…), Murmur плавно стихает и возвращается после него. Микс и громкости не меняются. Выключается в ⚙.
+- **Живой микс.** Громкость каждого звука медленно «дышит» вокруг ползунка: дождь то усиливается, то стихает, кафе наполняется и пустеет. Выключается в ⚙.
+- **Помодоро.** Кнопка «Таймер» внизу: ритмы 25/5, 50/10 и 90/20, в перерыв микс плавно сменяется на «Море» (или любой другой, или тишину), смену фазы отмечает удар поющей чаши. Отсчёт виден в строке меню.
+- **Быстрые команды и фокусы.** Действия «Включить микс», «Наугад», «Пауза», «Таймер сна», «Громкость» — в Spotlight, «Быстрых командах» и Siri. Фильтр фокуса: например, при включении фокуса «Работа» сам заиграет микс «Фокус».
+- **Автообновление.** Начиная с этой версии Murmur сам предлагает обновиться (⚙ → «Проверить обновления…»). С 1.10 и раньше обновиться нужно один раз вручную.
+- **Новый DMG:** только приложение и папка Applications со стрелкой.]]></description>
+      <enclosure url="https://github.com/docomoz/Murmur/releases/download/v1.11/Murmur.dmg" length="40199969" type="application/octet-stream" sparkle:edSignature="t88P8JE4UxVcYW0vuqipoy8VwH5Atj8fjbzaXZum3hwObx70xTECKp7TsKHXhRpdaWzE2ZpZB8JnCVBVWap0DQ=="/>
+    </item>
   </channel>
 </rss>
