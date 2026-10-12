@@ -90,7 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
-        let playing = store.isPlaying && !store.active.isEmpty
+        // While a call has Murmur ducked the bars stop swaying and settle low.
+        let hushed = store.isPlaying && !store.active.isEmpty && store.isDucked
+        let playing = store.isPlaying && !store.active.isEmpty && !hushed
         if playing, iconTimer == nil {
             // A gentle, slow sway of the bars while sound is playing — 12 fps is plenty for it.
             let timer = Timer(timeInterval: 1.0 / 12, repeats: true) { [weak self] _ in
@@ -107,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             iconTimer?.invalidate()
             iconTimer = nil
         }
-        button.image = StatusIcon.image(phase: iconPhase, playing: playing, badge: store.pomodoro?.phase.symbol)
+        button.image = StatusIcon.image(phase: iconPhase, playing: playing, badge: store.pomodoro?.phase.symbol, hushed: hushed)
         if let label = store.pomodoroLabel ?? store.timerLabel {
             button.attributedTitle = NSAttributedString(string: " " + label, attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
@@ -270,7 +272,7 @@ enum StatusIcon {
     private static let base: [CGFloat] = [0.46, 0.88, 0.66, 0.40]
     private static let speed: [Double] = [0.9, 0.62, 1.1, 0.75]
 
-    static func image(phase: Double, playing: Bool, badge: String? = nil) -> NSImage {
+    static func image(phase: Double, playing: Bool, badge: String? = nil, hushed: Bool = false) -> NSImage {
         let glyph = badge.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }?
             .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium))
         let extra = glyph.map { $0.size.width + 4 } ?? 0
@@ -291,6 +293,8 @@ enum StatusIcon {
                 var level = base[i]
                 if playing {
                     level *= 0.8 + 0.2 * CGFloat(sin(phase * speed[i] * 2 * .pi + Double(i) * 1.7))
+                } else if hushed {
+                    level *= 0.45
                 }
                 let height = max(10 * level, width)
                 NSBezierPath(roundedRect: NSRect(x: x, y: rect.midY - height / 2, width: width, height: height),
@@ -426,6 +430,17 @@ enum SelfTest {
             case .whiteNoise: continue
             }
         }
+        let duckFailures = DuckEnvelope.selfCheck()
+        print("\nduck envelope: " + (duckFailures.isEmpty ? "ok" : "FAIL " + duckFailures.joined(separator: "; ")))
+        let callFailures = CallDetector.selfCheck()
+        print("call detector: " + (callFailures.isEmpty ? "ok" : "FAIL " + callFailures.joined(separator: "; ")))
+        // Reads the HAL's process list only — never opens the microphone.
+        let recorders = MicMonitor.recorderNames()
+        let calls = MicMonitor.callNames()
+        print("mic monitor: \(MicMonitor.processes().count) audio clients visible, recording now: "
+              + (recorders.isEmpty ? "nobody" : recorders.joined(separator: ", "))
+              + "; would duck for: " + (calls.isEmpty ? "nobody" : calls.joined(separator: ", ")))
+
         print("\nНаугад, примеры:")
         for _ in 0..<12 {
             let levels = MainActor.assumeIsolated { MixStore.randomLevels() }

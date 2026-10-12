@@ -531,9 +531,13 @@ private struct FooterView: View {
 
             Spacer()
 
-            Image(systemName: "speaker.fill")
+            // During a call the duck is shown where the volume lives: a small mic instead of the speaker.
+            let hushed = store.isDucked && store.isPlaying && !store.active.isEmpty
+            Image(systemName: hushed ? "mic.fill" : "speaker.fill")
                 .font(.system(size: 9))
-                .foregroundStyle(Theme.dimIcon)
+                .foregroundStyle(hushed ? AnyShapeStyle(Theme.link) : AnyShapeStyle(Theme.dimIcon))
+                .frame(width: 10)
+                .contentTransition(.symbolEffect(.replace))
             LineSlider(value: Binding(get: { store.master }, set: { store.setMaster($0) }), on: true)
                 .frame(width: 84)
             Image(systemName: "speaker.wave.3.fill")
@@ -668,6 +672,9 @@ enum MenuBuilder {
         menu.addItem(.separator())
         menu.addItem(ActionMenuItem(L("Живой микс", "Living Mix"), checked: store.livingMix) {
             store.livingMix.toggle()
+        })
+        menu.addItem(ActionMenuItem(L("Тише во время созвонов", "Quiet During Calls"), checked: store.duckDuringCalls) {
+            store.duckDuringCalls.toggle()
         })
         menu.addItem(ActionMenuItem(L("Открывать при входе в систему", "Open at Login"), checked: store.launchAtLogin) {
             store.setLaunchAtLogin(!store.launchAtLogin)
