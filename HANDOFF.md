@@ -33,15 +33,13 @@ open build/Murmur.app --args --open-panel                   # запустить
 
 ## 2. Окружение и грабли (важно!)
 
-На машине автора **нет Xcode**, только Command Line Tools. Из-за этого:
-
-1. **`@State` нельзя использовать.** В текущем SDK `@State` — макрос, а плагина `SwiftUIMacros` в CLT нет: ошибка `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`. Обход, принятый во всём проекте:
+1. **`@State` раньше был недоступен.** Пока на машине были только Command Line Tools, `@State` не работал: в текущем SDK `@State` — макрос, а плагина `SwiftUIMacros` в CLT нет: ошибка `external macro implementation type 'SwiftUIMacros.StateMacro' could not be found`. Обход, принятый во всём проекте:
    ```swift
    private let hoverState = State<Bool>(initialValue: false)
    private var hover: Bool { get { hoverState.wrappedValue } nonmutating set { hoverState.wrappedValue = newValue } }
    // биндинг: hoverState.projectedValue
    ```
-   `@StateObject`, `@ObservedObject`, `@EnvironmentObject`, `@Binding`, `@Published` работают нормально. Если появится Xcode, можно вернуть обычный `@State`.
+   Теперь установлен Xcode 27 (`xcode-select -p` → `/Applications/Xcode.app`), и обычный `@State` компилируется. Старые вью можно не переписывать: обход тоже работает.
 2. **Путь бинарника SwiftPM** — новый бэкенд кладёт его в `.build/out/Products/Release/Murmur` и перезаписывает при сборке под другую архитектуру. `build.sh` поэтому собирает каждую архитектуру, сразу копирует результат через `swift build --show-bin-path`, затем `lipo`.
 3. **Подмена бинарника внутри подписанного .app** → процесс убивается (exit 137). После ручного `cp` бинарника обязательно `codesign --force --deep -s - build/Murmur.app`.
 4. **zsh: не называйте переменную `path`** — она связана с `$PATH` и ломает shell.
@@ -174,7 +172,9 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 ## 6. Распространение
 
 - `build.sh` подписывает ad-hoc (`codesign -s -`). Без сертификата Apple Developer ($99/год) у друзей Gatekeeper ругнётся при первом запуске: «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть» или `xattr -dr com.apple.quarantine /Applications/Murmur.app`. Это описано в `README-друзьям.txt`.
-- Для нормального распространения: Developer ID подпись + `xcrun notarytool` (нужен Xcode/аккаунт).
+- Релизная сборка с Developer ID и нотаризацией: `DEVELOPER_ID="Developer ID Application: Maksim Berezkin (TEAMID)" NOTARY_PROFILE=murmur-notary ./build.sh`. Скрипт подписывает с hardened runtime, нотаризует и степлит сначала .app (zip), потом подписанный DMG, а в «Как открыть.txt» заменяет инструкцию про Gatekeeper на простое «Запусти». Без переменных — прежняя ad-hoc сборка. `NOTARY_PROFILE` без `DEVELOPER_ID` — ошибка.
+- Однократная настройка: сертификат «Developer ID Application» (developer.apple.com → Certificates, CSR из «Связки ключей»; проверить: `security find-identity -v -p codesigning`), затем `xcrun notarytool store-credentials murmur-notary --apple-id <id> --team-id <TEAMID>` с app-specific password с appleid.apple.com.
+- Entitlements не нужны: `--selftest`/`--playtest` проходят с hardened runtime (проверено ad-hoc подписью с `--options runtime`).
 - Версия задаётся в `build.sh` (`VERSION`, `CFBundleVersion`). Автор: Maksim Berezkin (в «О программе», копирайте и LICENSE).
 
 ---
@@ -196,5 +196,5 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 - Возможно, стоит дать пользователю регулятор «разнообразия» (ширина `rate`/частота событий).
 - Media keys / Now Playing (`MPRemoteCommandCenter`) — осознанно не сделано, чтобы не перехватывать клавиши у Музыки.
 - Локализация (EN), настройка хоткея, больше звуков из Moodist (там 80+: airport, night-village, rain-on-tent, singing-bowl и т. д.).
-- Developer ID + нотаризация для «чистого» запуска у друзей.
+- Developer ID + нотаризация: `build.sh` готов (§6), ждём одобрения Apple Developer Program и первой реальной нотаризации.
 - Репозиторий: https://github.com/docomoz/Murmur (публичный). DMG выкладывается в Releases: `gh release create vX.Y build/Murmur.dmg`.

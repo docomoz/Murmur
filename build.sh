@@ -1,7 +1,20 @@
 #!/bin/bash
 # Builds Murmur.app (universal: Apple Silicon + Intel) and Murmur.dmg into ./build
+#
+# Without env vars the app is signed ad-hoc (Gatekeeper asks to allow it on first launch).
+# Release build, signed with Developer ID and notarized:
+#   DEVELOPER_ID="Developer ID Application: Maksim Berezkin (TEAMID)" \
+#   NOTARY_PROFILE=murmur-notary ./build.sh
+# NOTARY_PROFILE is a keychain profile created once with `xcrun notarytool store-credentials`.
 set -euo pipefail
 cd "$(dirname "$0")"
+
+DEVELOPER_ID="${DEVELOPER_ID:-}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+if [ -n "$NOTARY_PROFILE" ] && [ -z "$DEVELOPER_ID" ]; then
+  echo "✗ NOTARY_PROFILE задан без DEVELOPER_ID: нотаризовать можно только подписанное Developer ID" >&2
+  exit 1
+fi
 
 VERSION="1.9"
 APP="build/Murmur.app"
@@ -50,16 +63,62 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-echo "▸ Signing (ad-hoc)…"
-codesign --force --deep --sign - "$APP"
+# Submits a file to Apple's notary service and fails the build unless it is accepted.
+notarize() {
+  local file="$1" result status id
+  result=$(xcrun notarytool submit "$file" --keychain-profile "$NOTARY_PROFILE" --wait --output-format json)
+  echo "$result" > build/notary.json
+  status=$(plutil -extract status raw -o - build/notary.json)
+  id=$(plutil -extract id raw -o - build/notary.json)
+  rm build/notary.json
+  if [ "$status" != "Accepted" ]; then
+    echo "✗ Нотаризация $file: $status" >&2
+    xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" >&2
+    exit 1
+  fi
+}
+
+if [ -n "$DEVELOPER_ID" ]; then
+  echo "▸ Signing (Developer ID, hardened runtime)…"
+  codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$APP"
+  codesign --verify --strict --verbose=2 "$APP"
+else
+  echo "▸ Signing (ad-hoc)…"
+  codesign --force --deep --sign - "$APP"
+fi
+
+if [ -n "$NOTARY_PROFILE" ]; then
+  echo "▸ Notarizing app (обычно 1–5 мин)…"
+  ditto -c -k --keepParent "$APP" build/Murmur.zip
+  notarize build/Murmur.zip
+  rm build/Murmur.zip
+  xcrun stapler staple "$APP"
+fi
 
 echo "▸ Packing DMG…"
 STAGE="build/dmg"
 mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-cp "README-друзьям.txt" "$STAGE/Как открыть.txt"
+if [ -n "$NOTARY_PROFILE" ]; then
+  # Notarized: replace the Gatekeeper workaround in step 2 with a plain "launch it"
+  awk '/^2\. Запусти/ { print "2. Запусти Murmur из «Программ»."; skip = 1; next }
+       /^3\./ { skip = 0 } !skip' "README-друзьям.txt" > "$STAGE/Как открыть.txt"
+else
+  cp "README-друзьям.txt" "$STAGE/Как открыть.txt"
+fi
 hdiutil create -volname "Murmur" -srcfolder "$STAGE" -ov -format UDZO "build/Murmur.dmg" >/dev/null
 rm -rf "$STAGE"
+
+if [ -n "$DEVELOPER_ID" ]; then
+  codesign --force --timestamp --sign "$DEVELOPER_ID" build/Murmur.dmg
+fi
+if [ -n "$NOTARY_PROFILE" ]; then
+  echo "▸ Notarizing DMG…"
+  notarize build/Murmur.dmg
+  xcrun stapler staple build/Murmur.dmg
+  spctl --assess --type execute --verbose=2 "$APP"
+  spctl --assess --type open --context context:primary-signature --verbose=2 build/Murmur.dmg
+fi
 
 echo "✓ Готово: $(pwd)/build/Murmur.app и build/Murmur.dmg ($(du -h build/Murmur.dmg | cut -f1))"
