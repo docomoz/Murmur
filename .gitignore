@@ -12,3 +12,5 @@ preview-dark.png
 
 # Claude Code agent worktrees
 .claude/worktrees/
+# Exported Sparkle EdDSA private keys (generate_keys -x) must never be committed
+*.key
