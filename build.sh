@@ -16,7 +16,7 @@ if [ -n "$NOTARY_PROFILE" ] && [ -z "$DEVELOPER_ID" ]; then
   exit 1
 fi
 
-VERSION="1.9"
+VERSION="1.10"
 APP="build/Murmur.app"
 
 echo "▸ Compiling (arm64 + x86_64)…"
@@ -53,7 +53,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleVersion</key><string>10</string>
+  <key>CFBundleVersion</key><string>11</string>
   <key>CFBundleDevelopmentRegion</key><string>ru</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>

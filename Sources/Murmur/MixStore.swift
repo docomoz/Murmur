@@ -36,15 +36,15 @@ enum PanelTheme: String, CaseIterable {
 
 /// What the glass under the panel looks like.
 enum PanelBackdrop: String, CaseIterable {
+    /// Glass tinted with soft light in the colors of what's playing (the default).
+    case mix
     /// Standard system glass — follows the Liquid Glass setting in System Settings.
     case system
-    /// Glass tinted with soft light in the colors of what's playing.
-    case mix
 
     var title: String {
         switch self {
-        case .system: "Системная"
         case .mix: "В цветах микса"
+        case .system: "Системная"
         }
     }
 }
@@ -132,7 +132,7 @@ final class MixStore: ObservableObject {
         volumes = defaults.dictionary(forKey: "volumes") as? [String: Double] ?? [:]
         master = defaults.object(forKey: "master") as? Double ?? 0.8
         theme = PanelTheme(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
-        backdrop = PanelBackdrop(rawValue: defaults.string(forKey: "backdrop") ?? "") ?? .system
+        backdrop = PanelBackdrop(rawValue: defaults.string(forKey: "backdrop") ?? "") ?? .mix
         let savedAccent = AccentChoice(rawValue: defaults.string(forKey: "accent") ?? "") ?? .system
         accent = savedAccent
         Theme.accent = savedAccent
