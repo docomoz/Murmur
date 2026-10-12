@@ -41,10 +41,17 @@ if [ -n "$APPSTORE" ]; then
 fi
 
 echo "▸ Compiling (arm64 + x86_64)…"
-rm -rf build && mkdir -p build/bin "$APP/Contents/MacOS" "$APP/Contents/Resources"
+rm -rf build && mkdir -p build/bin build/intents "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# App Intents (Shortcuts / Spotlight / Siri / Focus filter) need Metadata.appintents in the bundle.
+# Xcode makes it in two steps, repeated here by hand: the compiler dumps compile-time values of
+# everything conforming to these protocols (the list Xcode 27 passes), then
+# appintentsmetadataprocessor turns that dump into the metadata (see "App Intents metadata" below).
+echo '["AnyResolverProviding","AppEntity","AppEnum","AppExtension","AppIntent","AppIntentsPackage","AppShortcutProviding","AppShortcutsProvider","AppUnionValue","AppUnionValueCasesProviding","DynamicOptionsProvider","EntityQuery","ExtensionPointDefining","IntentValueQuery","Resolver","TransientEntity","_AssistantIntentsProvider","_GenerativeFunctionExtractable","_IntentValueRepresentable"]' \
+  > build/intents/protocols.json
+CONST_VALUES=(-Xswiftc -emit-const-values -Xswiftc -const-gather-protocols-list -Xswiftc "$PWD/build/intents/protocols.json")
 for arch in arm64 x86_64; do
-  swift build -c release --triple "$arch-apple-macosx14.0" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"}
-  cp "$(swift build -c release --triple "$arch-apple-macosx14.0" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} --show-bin-path)/Murmur" "build/bin/Murmur-$arch"
+  swift build -c release --triple "$arch-apple-macosx14.0" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} "${CONST_VALUES[@]}"
+  cp "$(swift build -c release --triple "$arch-apple-macosx14.0" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} "${CONST_VALUES[@]}" --show-bin-path)/Murmur" "build/bin/Murmur-$arch"
 done
 
 echo "▸ Assembling bundle…"
@@ -52,6 +59,8 @@ lipo -create build/bin/Murmur-arm64 build/bin/Murmur-x86_64 -output "$APP/Conten
 rm -rf build/bin
 cp -R Resources/Sounds "$APP/Contents/Resources/Sounds"
 cp CREDITS.md "$APP/Contents/Resources/"
+# en/ru localizations: English for the App Intents texts (the UI itself is translated in code)
+cp -R Resources/Localization/*.lproj "$APP/Contents/Resources/"
 
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
 if [ -z "$APPSTORE" ]; then
@@ -89,7 +98,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
-  <key>CFBundleDevelopmentRegion</key><string>ru</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>ru</string></array>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
@@ -105,6 +115,51 @@ if [ -z "$APPSTORE" ] && [ -n "$SPARKLE_PUBLIC_KEY" ]; then
 elif [ -z "$APPSTORE" ]; then
   echo "  (автообновление выключено: нет Resources/sparkle-public-key.txt или SPARKLE_PUBLIC_KEY)"
 fi
+echo "▸ App Intents metadata…"
+# Same tools and flags as Xcode's "Extract app intents metadata" and "App Intents SSU training"
+# build steps. The metadata is architecture-neutral, so the arm64 compile-time values are enough.
+if ! xcrun --find appintentsmetadataprocessor >/dev/null 2>&1; then
+  echo "✗ Нет appintentsmetadataprocessor: нужен полный Xcode (xcode-select -s /Applications/Xcode.app)" >&2
+  exit 1
+fi
+ls "$PWD"/Sources/Murmur/*.swift > build/intents/sources.txt
+# Release builds are whole-module: one file per module. Newest wins, in case an older build
+# layout left a stale copy somewhere in .build.
+find "$PWD/.build" -ipath '*release*' -path '*/arm64/*' -name '*.swiftconstvalues' -print0 \
+  | xargs -0 ls -t 2>/dev/null | head -1 > build/intents/constvalues.txt || true
+if [ ! -s build/intents/constvalues.txt ]; then
+  echo "✗ Компилятор не выдал .swiftconstvalues — Metadata.appintents не из чего собрать" >&2
+  exit 1
+fi
+XCODE_BUILD=$(xcodebuild -version | awk '/Build version/ { print $3 }')
+TOOLCHAIN_DIR=$(dirname "$(dirname "$(dirname "$(xcrun --find swiftc)")")")
+xcrun appintentsmetadataprocessor \
+  --output "$APP/Contents/Resources" \
+  --toolchain-dir "$TOOLCHAIN_DIR" \
+  --module-name Murmur \
+  --sdk-root "$(xcrun --sdk macosx --show-sdk-path)" \
+  --xcode-version "$XCODE_BUILD" \
+  --platform-family macOS \
+  --deployment-target 14.0 \
+  --bundle-identifier app.murmur.mac \
+  --target-triple arm64-apple-macosx14.0 \
+  --source-file-list build/intents/sources.txt \
+  --swift-const-vals-list build/intents/constvalues.txt \
+  --compile-time-extraction \
+  --deployment-aware-processing > build/intents/metadata.log 2>&1 \
+  || { cat build/intents/metadata.log >&2; exit 1; }
+# Siri / Spotlight phrase models for every .lproj (ru from the source literals, en from AppShortcuts.strings)
+xcrun appintentsnltrainingprocessor \
+  --infoplist-path "$APP/Contents/Info.plist" \
+  --temp-dir-path build/intents/ssu \
+  --bundle-id app.murmur.mac \
+  --product-path "$APP/Contents/Resources" \
+  --extracted-metadata-path "$APP/Contents/Resources/Metadata.appintents" \
+  --source-file Resources/Localization/en.lproj/AppShortcuts.strings \
+  --archive-ssu-assets > build/intents/training.log 2>&1 \
+  || { cat build/intents/training.log >&2; exit 1; }
+[ -s "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata" ] || { echo "✗ Нет Metadata.appintents" >&2; exit 1; }
+rm -rf build/intents
 
 # Submits a file to Apple's notary service and fails the build unless it is accepted.
 notarize() {

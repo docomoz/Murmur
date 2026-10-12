@@ -5,7 +5,7 @@
 - Состояние: v1.0, работает, установлено у автора в `/Applications/Murmur.app`.
 - Стек: Swift 5 language mode (компилятор Swift 6.4), SwiftUI + AppKit, AVAudioEngine. Единственная зависимость — Sparkle 2 (SwiftPM, автообновление только в DMG-версии, §6).
 - Минимальная ОС: macOS 14 Sonoma. Сборка универсальная (arm64 + x86_64).
-- Язык интерфейса: **русский или английский** — по первому языку системы (`ru*` → русский, иначе английский). Все видимые строки обёрнуты в `L("по-русски", "In English")`, помощник и `Lang.isRussian` — в `Sound.swift`. Проверить английский: `build/Murmur.app/Contents/MacOS/Murmur --snapshot <prefix> -AppleLanguages "(en)"`. `Info.plist` пока без `CFBundleLocalizations`, поэтому выбрать язык приложения отдельно в Системных настройках нельзя — можно добавить.
+- Язык интерфейса: **русский или английский** — по первому языку системы (`ru*` → русский, иначе английский). Все видимые строки обёрнуты в `L("по-русски", "In English")`, помощник и `Lang.isRussian` — в `Sound.swift`. Проверить английский: `build/Murmur.app/Contents/MacOS/Murmur --snapshot <prefix> -AppleLanguages "(en)"`. В бандле есть `en.lproj`/`ru.lproj` (`Resources/Localization`, нужны для текстов App Intents, §4 «App Intents»), `CFBundleLocalizations = [en, ru]`, `CFBundleDevelopmentRegion = en` — так системные тексты и App Intents выбирают язык по тому же правилу, что `L()` (русский Mac → ru, любой другой → en). Тонкость: при языках «украинский, русский» бандл выберет ru, а `L()` — английский (смотрит только на первый язык).
 
 ---
 
@@ -45,6 +45,7 @@ open build/Murmur.app --args --open-panel                   # запустить
 4. **zsh: не называйте переменную `path`** — она связана с `$PATH` и ломает shell.
 5. Предупреждения `ld: warning: search path ... not found` и `hdiutil ... deprecated` безвредны.
 6. `ImageRenderer` (режим `--snapshot`) не рисует `ScrollView`, `Menu` и **Liquid Glass** (стеклянные элементы пропадают вместе с содержимым). При `SelfTest.isRendering = true` список выводится без ScrollView, а `liquidGlass`/`GlassGroup` подменяют стекло матовой подложкой. Настоящее стекло видно только в живом приложении.
+7. **App Intents собираются без Xcode-проекта, но нужен полный Xcode** (`appintentsmetadataprocessor`, `appintentsnltrainingprocessor`, `xcodebuild -version`). Подробно — §4 «App Intents». Тексты интентов — только строковые литералы (никаких `L()`), иначе они не попадут в метаданные.
 
 ---
 
@@ -53,7 +54,7 @@ open build/Murmur.app --args --open-panel                   # запустить
 ```
 Package.swift                 SwiftPM, executable target "Murmur", macOS 14
 Package.resolved              закреплённая версия Sparkle (2.10.0)
-build.sh                      сборка: 2 арх → lipo → .app + Sparkle.framework → иконка → Info.plist → подпись → оформленный DMG
+build.sh                      сборка: 2 арх → lipo → .app + Sparkle.framework → иконка → Info.plist → метаданные App Intents → подпись → оформленный DMG
 build-appstore.sh             App Store-версия (без Sparkle, песочница), §6
 appcast.xml                   лента обновлений Sparkle (раздаётся с raw.githubusercontent.com), §6
 scripts/make_appcast.sh       добавляет релиз из build/Murmur.dmg в appcast.xml с подписью EdDSA
@@ -66,7 +67,9 @@ Sources/Murmur/
   MixStore.swift              состояние (ObservableObject): активные звуки, громкости, пресеты, таймер сна, хоткей, автозапуск
   Views.swift                 весь UI (панель, ленты, строки, слайдеры) + нативные NSMenu (MenuBuilder, ActionMenuItem)
   Updater.swift               автообновление (Sparkle, стандартный UI); при -DAPPSTORE — пустая заглушка
+  Intents.swift               App Intents: действия для «Быстрых команд»/Spotlight/Siri, MixEntity, App Shortcuts, фильтр фокусирования
 Resources/Sounds/*.mp3        19 записей (≈34 МБ), копируются в .app/Contents/Resources/Sounds
+Resources/Localization/       en.lproj (английский для App Intents: Localizable.strings, AppShortcuts.strings) и ru.lproj
 Resources/icon-1024.png       иконка (генерируется scripts/make_icon.swift)
 scripts/make_icon.swift       рисует иконку кодом: `swift scripts/make_icon.swift Resources/icon-1024.png`
 scripts/make_dmg_background.swift  фон окна DMG (логотип, название, стрелка); build.sh вызывает его сам
@@ -115,6 +118,7 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 - Глобальный хоткей **⌃⌥P** (Carbon `RegisterEventHotKey`, не требует прав Accessibility).
 - Автозапуск: `SMAppService.mainApp` (надёжно работает из `/Applications`).
 - Персистентность: ключи `active`, `volumes`, `master`, `userMixes`, `launchedBefore`, `livingMix` (а также `theme`/`backdrop`/`accent`).
+- Персистентность: ключи `active`, `volumes`, `master`, `userMixes`, `launchedBefore` (+ `focusSession` — что включил фильтр фокусирования, см. «App Intents»).
 - `statusLine` и `suggestedMixName` — `statusLine` после редизайна в UI не используется (можно удалить).
 
 ### UI (`Views.swift`)
@@ -143,6 +147,37 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 - Панель — `GlassPanel` (`NSPanel`, borderless + nonactivating, может быть key → работает пробел). Контент — `GlassHost.makePanelContent`: SwiftUI в `NSHostingView` внутри **`NSGlassEffectView`** (macOS 26+; следует системной настройке Liquid Glass «прозрачное/тонированное»), до 26 — `NSVisualEffectView(.menu)`. Закрывается по клику снаружи (global monitor), Esc, потере фокуса.
 - **Грабли macOS 27:** строку меню рисует система; окно статус-айтема в нашем процессе — заглушка с фреймом `(0, -33, 32, 33)`, `screen == nil`. Поэтому: при клике по значку панель позиционируется по курсору (`showPanel(fromClick: true)`); если координат нет и это не клик — открывается окно-фолбэк.
 - Окно-фолбэк (`showWindow`, `ContentView(inWindow: true)`, обычное окно): при самом первом запуске и при повторном открытии приложения (двойной клик), если панель не к чему привязать.
+
+### App Intents: «Быстрые команды», Spotlight, Siri, фильтр фокусирования (`Intents.swift`)
+- **Действия** (все `openAppWhenRun = false`, `perform()` на `@MainActor`, берут `MixStore` из `AppDelegate` через `MixStore.forIntents()`): «Включить микс» (параметр — `MixEntity`), «Наугад», «Пауза / Играть» (toggle), «Играть», «Пауза», «Остановить», «Таймер сна» (минуты 1–720, по умолчанию 30), «Выключить таймер сна», «Громкость Murmur» (0–100). Расширения (appex) нет: интенты выполняются в самом приложении; если Murmur не запущен, система запускает его в фоне.
+- **`MixEntity` / `MixQuery`** (`EntityStringQuery`): встроенные пресеты + миксы пользователя, id = `Mix.id`. Список отдаёт живой `MixStore`, без него — `Mix.presets + MixStore.savedUserMixes()`. При сохранении/удалении микса и при запуске вызывается `MurmurShortcuts.updateAppShortcutParameters()`, чтобы фраза «Включи <микс> в Murmur» знала новые миксы.
+- **`MurmurShortcuts`** (`AppShortcutsProvider`): 6 App Shortcuts с русскими фразами — видны в Spotlight и «Быстрых командах» без настройки. В каждой фразе обязателен `\(.applicationName)`.
+- **Фильтр фокусирования** `MurmurFocusFilter` (`SetFocusFilterIntent`): Настройки → Фокусирование → режим → Фильтры фокусирования → Murmur → микс + «Пауза, когда режим выключится». Система вызывает `perform()` и при включении режима (с выбранными значениями), и при выключении (со значениями по умолчанию, т. е. `mix == nil`), поэтому решение «ставить ли на паузу» запоминается при включении (`FocusSession`, UserDefaults `focusSession`). На паузу ставится только если играет ровно тот микс, что включил режим.
+- **Язык.** Всё, что попадает в метаданные (заголовки, описания, параметры, `Summary`, фразы, `shortTitle`), — **строковые литералы на русском**: build.sh извлекает их на этапе компиляции, `L()` там не сработает. Английский — в `Resources/Localization/en.lproj`: `Localizable.strings` (ключ — русский литерал; в `Summary` параметр пишется как `${mix}`) и `AppShortcuts.strings` (фразы, `${applicationName}`). `ru.lproj` нужен, чтобы русский был в списке локализаций бандла. **`--selftest` проверяет, что у каждого ключа из метаданных есть английский перевод** («FAIL no English for …»), — добавляя/меняя текст интента, обновите en.lproj.
+
+**Как собираются метаданные (build.sh, без Xcode-проекта).** Xcode делает для интентов два шага, build.sh повторяет их вручную:
+1. `swift build … -Xswiftc -emit-const-values -Xswiftc -const-gather-protocols-list -Xswiftc build/intents/protocols.json` — компилятор пишет `*.swiftconstvalues` (значения всех типов, соответствующих протоколам из списка; список взят из сборки Xcode 27 — `<Target>_const_extract_protocols.json`). Новый бэкенд SwiftPM делает это и сам, флаги — для надёжности. Файл лежит в `.build/out/Intermediates.noindex/Murmur.build/Release/Murmur-p.build/Objects-normal/arm64/Murmur-primary.swiftconstvalues`; build.sh находит самый свежий `*.swiftconstvalues` в `*release*/…/arm64/`.
+2. `xcrun appintentsmetadataprocessor --compile-time-extraction --deployment-aware-processing …` → `Contents/Resources/Metadata.appintents/{extract.actionsdata,version.json}`. Метаданные не зависят от архитектуры — хватает arm64.
+3. `xcrun appintentsnltrainingprocessor … --archive-ssu-assets` → `<lang>.lproj/nlu.appintents` и `Metadata.appintents/root.ssu.yaml` (модели фраз для Siri/Spotlight; ru из литералов, en из `AppShortcuts.strings`).
+Затем обычная подпись — метаданные внутри `Resources`, их запечатывает codesign. Bundle ID в метаданные не попадает, поэтому `build-appstore.sh` (меняет ID на `com.docomoz.murmur`, песочница) ничего пересобирать не должен; дополнительных entitlements для интентов и фильтров фокусирования не нужно.
+
+**Как система их находит (проверено 12.10 на macOS 27).** Демон `linkd` индексирует `Metadata.appintents` после регистрации в LaunchServices, **но только после того, как приложение хоть раз запустили** — до первого запуска в логе `Bundle … is not trusted for binding, skipping`. После запуска: `Adding …/Metadata.appintents/extract.actionsdata`, `Inserting canonical bundle`, `LNMetadataChangedNotification added`, `Interpolating AppShortcuts`, «donating to Siri»; `duetexpertd`/Shortcuts загружает все 10 действий, фильтр — как `WFFocusConfigurationLinkAction`. Как проверить, не запуская GUI:
+```bash
+./build.sh
+# Копия с другим Bundle ID, чтобы не путать с установленным Murmur. Не в /tmp: из временных папок
+# linkd бандл не находит (LS error -10814).
+mkdir -p build/check && cp -R build/Murmur.app build/check/
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier app.murmur.check" build/check/Murmur.app/Contents/Info.plist
+codesign --force -s - build/check/Murmur.app
+LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+$LSREG -f build/check/Murmur.app
+open -n -g build/check/Murmur.app --args --selftest     # «запуск» без окна: selftest сам завершается
+/usr/bin/log show --last 1m --predicate 'process == "linkd" AND eventMessage CONTAINS "app.murmur.check"' --style compact
+$LSREG -u build/check/Murmur.app && rm -rf build/check  # убрать за собой
+```
+(в zsh `log` — встроенная команда, поэтому `/usr/bin/log`). Сам индекс (`~/Library/Daemon Containers/…/appintents.sqlite3`) и XPC `com.apple.linkd.registry` закрыты для сторонних процессов — только логи.
+- Если в «Быстрых командах» видны старые действия: копий с одним Bundle ID несколько (build/, /Applications) — `lsregister -f /Applications/Murmur.app` и запустить его.
+- В ad-hoc сборке `linkd` пишет `Failed to generate bundleIdentity: Unable to get teamId` — у ad-hoc подписи нет Team ID; индексации это не мешает. Как это влияет на выполнение — не проверено (см. §7).
 
 ---
 
@@ -192,6 +227,7 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
   - Без переменных — локальная тестовая сборка в песочнице с ad-hoc подписью (`build/appstore/Murmur.app`).
   - С `MAS_APP_IDENTITY` (Apple Distribution), `MAS_INSTALLER_IDENTITY` (3rd Party Mac Developer Installer) и `MAS_PROFILE` (Mac App Store Connect profile) — встраивает профиль, добавляет `com.apple.application-identifier`/`team-identifier` из профиля в entitlements, подписывает и собирает `build/appstore/Murmur.pkg` для Transporter.
 - Проверено в песочнице (12.10): все записи читаются, звук играет (`--selftest`, `--playtest`), настройки пишутся в `~/Library/Containers/com.docomoz.murmur`, панель открывается. Глобальный монитор кликов, хоткей и автозапуск в песочнице допустимы, но вживую в App Store-сборке не проверялись.
+- App Intents в App Store-сборке: `Metadata.appintents` переходит из `build.sh` как есть (Bundle ID в нём не записан), entitlements не нужны. Проверено 12.10: песочная ad-hoc сборка `com.docomoz.murmur` после регистрации и запуска проиндексирована `linkd` (действия + App Shortcuts). В App Store Connect стоит упомянуть действия «Быстрых команд» и фильтр фокусирования в описании.
 - `scripts/make_screenshot.swift <panel.png> "Заголовок" "Подпись" out.png` — кадр 2880×1800 для App Store из снимка панели (⌘⇧4 → пробел → клик).
 - Приложение бесплатное: банковские/налоговые формы не нужны. Автор: Maksim Berezkin, аккаунт Apple ID — Казахстан, карта — Киргизия (обсуждали; второй аккаунт не нужен).
 - Интерфейс двуязычный (см. «Язык интерфейса» выше), английская страница App Store ему соответствует; в английском UI «Наугад» = «Shuffle».
@@ -271,6 +307,8 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 Автообновление (12.10): `./build.sh` и `./build-appstore.sh` собираются, `codesign --verify --deep --strict` проходит, `--selftest` проходит в обеих сборках; в App Store-сборке нет ни фреймворка, ни ссылки на него, ни строк Sparkle в бинарнике. Сквозной тест с одноразовым ключом и лентой на localhost (§6): ad-hoc 1.10 сама скачала и поставила 1.11, подпись нового бандла валидна, карантина нет, `--selftest` проходит; лента с подписью чужим ключом — обновление отклонено (осталась 1.10), а `make_appcast.sh` с чужим ключом падает. Не проверено: Developer ID + нотаризация с Sparkle (нет сертификата; ad-hoc + runtime не годится для имитации, см. §6), окно Sparkle при ручной проверке и смена `.accessory/.regular` глазами.
 
 Не проверено руками ассистентом (нет доступа к UI): нативные меню (миксы/таймер/настройки), горячая клавиша ⌃⌥P, таймер сна до конца, автозапуск, поведение при смене аудиоустройства.
+
+App Intents (12.10): проверено, что метаданные собираются и `linkd` их индексирует (обычная и песочная сборки), Shortcuts загружает все 10 действий и фильтр фокусирования, App Shortcuts интерполируются; `--selftest` сверяет метаданные и английские переводы. **Не проверено** (нужен живой GUI): реальный запуск действий из «Быстрых команд»/Spotlight/Siri (в т. ч. фоновый запуск незапущенного Murmur и ad-hoc сборка без Team ID), список миксов в параметре, срабатывание фильтра при включении/выключении режима фокусирования, распознавание русских фраз Siri.
 
 ---
 

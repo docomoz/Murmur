@@ -64,6 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         Updater.shared.start()
+        // Siri / Spotlight phrases with a mix name («Включи Фокус в Murmur») need the current list of mixes.
+        MurmurShortcuts.updateAppShortcutParameters()
 
         let firstLaunch = !UserDefaults.standard.bool(forKey: "launchedBefore")
         UserDefaults.standard.set(true, forKey: "launchedBefore")
@@ -418,6 +420,53 @@ enum SelfTest {
             let levels = MainActor.assumeIsolated { MixStore.randomLevels() }
             print("  " + levels.sorted { $0.value > $1.value }.compactMap { Sound.byID[$0.key]?.name }.joined(separator: " + "))
         }
+        reportIntents()
+    }
+
+    /// Checks the App Intents metadata that build.sh puts into the bundle: every intent is there,
+    /// and every text the system shows has an English translation in en.lproj.
+    private static func reportIntents() {
+        print("\nApp Intents:")
+        let resources = Bundle.main.resourceURL!
+        guard let data = try? Data(contentsOf: resources.appendingPathComponent("Metadata.appintents/extract.actionsdata")),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("  FAIL no Metadata.appintents in the bundle (run from build/Murmur.app, built by build.sh)")
+            return
+        }
+        let actions = (root["actions"] as? [String: Any] ?? [:]).keys.sorted()
+        let expected = ["PlayMixIntent", "ShuffleIntent", "TogglePlaybackIntent", "PlayIntent", "PauseIntent", "StopIntent",
+                        "SleepTimerIntent", "CancelSleepTimerIntent", "SetVolumeIntent", "MurmurFocusFilter"]
+        let missing = expected.filter { !actions.contains($0) }
+        let shortcuts = (root["autoShortcuts"] as? [Any])?.count ?? 0
+        let entities = (root["entities"] as? [String: Any] ?? [:]).keys.sorted()
+        print("  actions \(actions.count), App Shortcuts \(shortcuts), entities \(entities.joined(separator: ", "))")
+        if !missing.isEmpty { print("  FAIL missing actions: \(missing.joined(separator: ", "))") }
+
+        // Every key the system will look up, split by table: phrases → AppShortcuts, the rest → Localizable.
+        var keys: (texts: Set<String>, phrases: Set<String>) = ([], [])
+        func walk(_ value: Any, phrase: Bool) {
+            if let dict = value as? [String: Any] {
+                for (k, v) in dict {
+                    if let s = v as? String, k == "key" || k == "formatString" {
+                        if phrase { keys.phrases.insert(s) } else { keys.texts.insert(s) }
+                    } else {
+                        walk(v, phrase: phrase || k == "phraseTemplates")
+                    }
+                }
+            } else if let array = value as? [Any] {
+                for v in array { walk(v, phrase: phrase) }
+            }
+        }
+        walk(root, phrase: false)
+        for (table, wanted) in [("Localizable", keys.texts), ("AppShortcuts", keys.phrases)] {
+            let url = resources.appendingPathComponent("en.lproj/\(table).strings")
+            let english = NSDictionary(contentsOf: url) as? [String: String] ?? [:]
+            let untranslated = wanted.filter { english[$0] == nil }.sorted()
+            print("  en.lproj/\(table).strings: \(wanted.count - untranslated.count)/\(wanted.count) translated")
+            for key in untranslated { print("  FAIL no English for \"\(key)\"") }
+        }
+        let mixes = MainActor.assumeIsolated { MixStore.mixesForIntents.count }
+        print("  mixes offered to Shortcuts: \(mixes)")
     }
 
     /// «Живой микс»: every sound's drift stays within ±`drift` dB, moves slowly (no faster than
