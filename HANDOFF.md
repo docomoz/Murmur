@@ -65,6 +65,8 @@ Resources/Sounds/*.mp3        19 записей (≈34 МБ), копируютс
 Resources/icon-1024.png       иконка (генерируется scripts/make_icon.swift)
 scripts/make_icon.swift       рисует иконку кодом: `swift scripts/make_icon.swift Resources/icon-1024.png`
 scripts/make_dmg_background.swift  фон окна DMG (логотип, название, стрелка); build.sh вызывает его сам
+scripts/update_cask.sh        обновляет version/sha256 в Homebrew-каске (§6)
+packaging/homebrew/murmur.rb  Homebrew-каск — источник правды, в tap копируется отсюда
 CREDITS.md                    источники и лицензии звуков (кладётся в бандл)
 preview-*.png                 последние снапшоты UI
 build/                        артефакты (не исходники)
@@ -197,6 +199,24 @@ Bundle ID: `app.murmur.mac`. `LSUIElement = true` (нет иконки в Док
 - Однократная настройка: сертификат «Developer ID Application» (developer.apple.com → Certificates, CSR из «Связки ключей»; проверить: `security find-identity -v -p codesigning`), затем `xcrun notarytool store-credentials murmur-notary --apple-id <id> --team-id <TEAMID>` с app-specific password с appleid.apple.com.
 - Entitlements не нужны: `--selftest`/`--playtest` проходят с hardened runtime (проверено ad-hoc подписью с `--options runtime`).
 - Версия задаётся в `build.sh` (`VERSION`, `CFBundleVersion`). Автор: Maksim Berezkin (в «О программе», копирайте и LICENSE).
+
+### Homebrew (свой tap; ничего не опубликовано)
+
+Решение: **сейчас — свой tap `docomoz/homebrew-tap`** (`brew install --cask docomoz/tap/murmur`), официальный `homebrew/cask` — позже. В официальный не пройти по двум причинам (проверено `brew audit --cask --new` 12.10): (1) Gatekeeper — ad-hoc сборка не проходит проверку подписи, а по Acceptable Casks приложения обязаны её проходить; такие каски Homebrew депрекейтит и удаляет; (2) notability (Package Acceptance Policy): ≥30 форков / 30 watchers / 75 звёзд, а для самоподачи владельцем репозитория ≥90 / 90 / 225; репозиторию должно быть ≥30 дней. Свой tap этих требований не имеет.
+
+Файлы: `packaging/homebrew/murmur.rb` — каск (источник правды), `scripts/update_cask.sh` — подставляет версию и sha256 (по умолчанию берёт digest опубликованного ассета через `gh`, без `gh` скачивает; `--local` — хеш `build/Murmur.dmg`; `--tap <путь>` — копирует в checkout tap и прогоняет `brew style`). Скрипт ничего не коммитит и не пушит.
+
+Каск: `depends_on macos: :sonoma` (сейчас это «не ниже»; строка `">= :sonoma"` устарела), `uninstall quit:` (приложение в строке меню обычно запущено), `zap` — `~/Library/Preferences/app.murmur.mac.plist` (кроме UserDefaults приложение ничего не пишет) и Saved Application State. Автозапуск через `SMAppService.mainApp` в каск не вписан: `uninstall login_item:` работает только со старыми login items, а запись SMAppService Homebrew не трогает: без приложения она становится недействительной (не проверено руками). Пока сборка ad-hoc, в каске блок `caveats` про «Всё равно открыть» / `xattr` (Homebrew ставит карантин; флага `--no-quarantine` больше нет).
+
+С Homebrew 6 сторонние tap требуют доверия: `brew install --cask docomoz/tap/murmur` (полное имя) работает сразу; короткое `brew install --cask murmur` — только после `brew tap docomoz/tap` и `brew trust --cask docomoz/tap/murmur`. В README давать полное имя.
+
+**Чек-лист автора**
+1. Один раз: `gh repo create docomoz/homebrew-tap --public -d "Homebrew tap for Murmur"`; склонировать, например, в `~/Projects/homebrew-tap`. Имя обязательно с префиксом `homebrew-`. Достаточно `Casks/murmur.rb` + короткого README; workflows из `brew tap-new` рассчитаны на формулы и бутылки, не нужны.
+2. Первая публикация: `scripts/update_cask.sh --tap ~/Projects/homebrew-tap` → `git add Casks/murmur.rb && git commit -m "murmur 1.10" && git push` в tap. Проверка: `brew install --cask docomoz/tap/murmur` (и `brew uninstall --cask --zap murmur`). В README Murmur добавить строку установки.
+3. Каждый релиз: `./build.sh` → `gh release create vX.Y build/Murmur.dmg` → `scripts/update_cask.sh --tap ~/Projects/homebrew-tap` (версию берёт из `build.sh`) → коммит `packaging/homebrew/murmur.rb` здесь и `Casks/murmur.rb` в tap. Хешировать нужно ровно тот DMG, что загружен: DMG не воспроизводим, повторный `./build.sh` даёт другой sha256. `brew livecheck --cask docomoz/tap/murmur` показывает, отстал ли каск.
+4. После первой нотаризованной сборки (Developer ID, §6 DMG): удалить блок `caveats` в каске, опубликовать.
+5. Официальный `homebrew/cask` — когда релизы нотаризованы, а у репозитория ≥90 форков / 90 watchers / 225 звёзд (самоподача) или кто-то другой подаёт его при ≥30 / 30 / 75. Проверить локально: `brew tap-new --no-git <user>/test`, положить каск в `Casks/`, `brew audit --cask --new <user>/test/murmur` должен пройти без ошибок; затем `brew untap`. PR — в Homebrew/homebrew-cask (`Casks/m/murmur.rb`, токен `murmur` свободен); после принятия убрать каск из своего tap (или оставить, но не держать два источника).
+6. Sparkle (если появится автообновление): добавить `auto_updates true` (иначе `brew upgrade` и Sparkle будут спорить о версии), можно перейти на `livecheck` со `strategy :sparkle` по appcast; в `zap` добавить `~/Library/Caches/app.murmur.mac` и `~/Library/HTTPStorages/app.murmur.mac`.
 
 ---
 
