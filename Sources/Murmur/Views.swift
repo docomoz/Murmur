@@ -616,6 +616,9 @@ enum MenuBuilder {
         menu.addItem(accent)
 
         menu.addItem(.separator())
+        menu.addItem(ActionMenuItem(L("Живой микс", "Living Mix"), checked: store.livingMix) {
+            store.livingMix.toggle()
+        })
         menu.addItem(ActionMenuItem(L("Открывать при входе в систему", "Open at Login"), checked: store.launchAtLogin) {
             store.setLaunchAtLogin(!store.launchAtLogin)
         })

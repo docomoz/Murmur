@@ -11,7 +11,7 @@ enum MurmurMain {
         let app = NSApplication.shared
         if CommandLine.arguments.contains("--selftest") {
             SelfTest.run()
-            exit(0)
+            exit(SelfTest.failed ? 1 : 0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             SelfTest.snapshot(to: CommandLine.arguments[i + 1])
@@ -398,8 +398,11 @@ enum GlassHost {
 /// `Murmur --selftest`: builds every loop and prints level and seam statistics.
 enum SelfTest {
     static var isRendering = false
+    /// Set by checks that can fail outright; `--selftest` then exits with status 1.
+    static var failed = false
 
     static func run() {
+        checkDrift()
         print("sound        rms   peak  repeat  (old loop → repeat 1.00; lower = less repetitive)")
         for sound in Sound.all {
             switch sound.source {
@@ -413,6 +416,89 @@ enum SelfTest {
             let levels = MainActor.assumeIsolated { MixStore.randomLevels() }
             print("  " + levels.sorted { $0.value > $1.value }.compactMap { Sound.byID[$0.key]?.name }.joined(separator: " + "))
         }
+    }
+
+    /// «Живой микс»: every sound's drift stays within ±`drift` dB, moves slowly (no faster than
+    /// `maxRate` dB/s, also while being switched off), really moves, and is exactly 1.0 for sounds
+    /// without drift and once the feature is off. Also renders the wrapper over a constant signal
+    /// to make sure the gain is interpolated inside buffers (no zipper steps).
+    private static func checkDrift() {
+        let dt = 512 / TextureGenerator.sampleRate
+        let maxRate = 0.25          // dB/s while drifting
+        let maxToggleRate = 0.75    // dB/s while fading the drift in/out
+        var problems: [String] = []
+        var summary: [String] = []
+
+        func db(_ g: Float) -> Double { 20 * log10(Double(g)) }
+
+        for sound in Sound.all {
+            var drift = Drift(depthDB: sound.drift)
+            var lo = 0.0, hi = 0.0, rate = 0.0
+            var previous = db(drift.gain)
+            for _ in 0..<Int(30 * 60 / dt) {
+                let g = drift.advance(dt, enabled: true)
+                let v = db(g)
+                if sound.drift == 0 && g != 1 { problems.append("\(sound.id): no-drift sound moved (\(g))"); break }
+                lo = min(lo, v); hi = max(hi, v)
+                rate = max(rate, abs(v - previous) / dt)
+                previous = v
+            }
+            if sound.drift > 0 {
+                if lo < -sound.drift - 1e-6 || hi > sound.drift + 1e-6 {
+                    problems.append(String(format: "%@: out of range %.2f…%.2f dB (±%.2f)", sound.id as NSString, lo, hi, sound.drift))
+                }
+                if rate > maxRate { problems.append(String(format: "%@: too fast, %.3f dB/s", sound.id as NSString, rate)) }
+                if hi - lo < sound.drift * 0.5 { problems.append(String(format: "%@: barely moves, %.2f dB p-p", sound.id as NSString, hi - lo)) }
+                summary.append(String(format: "%@ ±%.1f (%.1f…%+.1f, %.2f dB/s)", sound.id as NSString, sound.drift, lo, hi, rate))
+            }
+
+            // Switching «Живой микс» off glides back to exactly 1.0, slowly.
+            var fading = rate
+            for _ in 0..<Int((Drift.toggleTime + 1) / dt) {
+                let v = db(drift.advance(dt, enabled: false))
+                fading = max(fading, abs(v - previous) / dt)
+                previous = v
+            }
+            if drift.gain != 1 { problems.append("\(sound.id): not 1.0 after switching off (\(drift.gain))") }
+            if fading > maxToggleRate { problems.append(String(format: "%@: switch-off too fast, %.3f dB/s", sound.id as NSString, fading)) }
+            var off = Drift(depthDB: sound.drift, enabled: false)
+            for _ in 0..<1000 where off.advance(dt, enabled: false) != 1 {
+                problems.append("\(sound.id): disabled drift is not 1.0"); break
+            }
+        }
+
+        // The wrapper over a constant 1.0 signal: output = gain, and it never steps.
+        final class Constant: RealtimeGenerator {
+            func render(frames: Int, into list: UnsafeMutablePointer<AudioBufferList>) {
+                for b in UnsafeMutableAudioBufferListPointer(list) {
+                    b.mData?.assumingMemoryBound(to: Float.self).update(repeating: 1, count: frames)
+                }
+            }
+        }
+        let toggle = DriftSwitch()
+        let wrapper = DriftingGenerator(Constant(), depthDB: 3, toggle: toggle)
+        let block = AVAudioPCMBuffer(pcmFormat: AVAudioFormat(standardFormatWithSampleRate: TextureGenerator.sampleRate, channels: 2)!, frameCapacity: 512)!
+        block.frameLength = 512
+        var last: Float = -1, step: Float = 0
+        for n in 0..<Int(120 / dt) {
+            if n == Int(100 / dt) { toggle.enabled = false }
+            wrapper.render(frames: 512, into: block.mutableAudioBufferList)
+            let p = block.floatChannelData![0]
+            for i in 0..<512 {
+                if last >= 0 { step = max(step, abs(p[i] - last)) }
+                last = p[i]
+            }
+        }
+        if step > 1e-5 { problems.append(String(format: "wrapper: sample step %.2e (zipper)", step)) }
+        if last != 1 { problems.append("wrapper: not 1.0 after switching off (\(last))") }
+
+        if problems.isEmpty {
+            print(String(format: "living mix OK (max sample step %.1e): ", step) + summary.joined(separator: ", "))
+        } else {
+            failed = true
+            for p in problems { print("FAIL living mix:", p) }
+        }
+        print("")
     }
 
     /// Renders 150 s of the live generator and checks how similar the audio is one old-loop-length

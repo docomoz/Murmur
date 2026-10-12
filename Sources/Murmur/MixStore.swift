@@ -116,6 +116,14 @@ final class MixStore: ObservableObject {
         }
     }
 
+    /// «Живой микс»: levels slowly wander around the sliders (see `Drift`). On by default.
+    @Published var livingMix: Bool {
+        didSet {
+            if !Self.sandboxed { defaults.set(livingMix, forKey: "livingMix") }
+            audio.livingMix = livingMix
+        }
+    }
+
     private let audio = AudioEngine()
     private let defaults = UserDefaults.standard
     private var timerEnd: Date?
@@ -136,12 +144,14 @@ final class MixStore: ObservableObject {
         let savedAccent = AccentChoice(rawValue: defaults.string(forKey: "accent") ?? "") ?? .system
         accent = savedAccent
         Theme.accent = savedAccent
+        livingMix = defaults.object(forKey: "livingMix") as? Bool ?? true
         if let data = defaults.data(forKey: "userMixes"), let mixes = try? JSONDecoder().decode([Mix].self, from: data) {
             userMixes = mixes
         } else {
             userMixes = []
         }
         audio.masterVolume = Self.curve(master)
+        audio.livingMix = livingMix
 
         hotKey = HotKey(keyCode: UInt32(kVK_ANSI_P), modifiers: UInt32(controlKey | optionKey)) { [weak self] in
             MainActor.assumeIsolated { self?.togglePlay() }
