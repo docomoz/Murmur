@@ -24,14 +24,21 @@ if [ -n "$APP_IDENTITY" ] && { [ -z "$INSTALLER_IDENTITY" ] || [ -z "$PROFILE" ]
   exit 1
 fi
 
-echo "▸ Regular build…"
-./build.sh >/dev/null
+echo "▸ Regular build without Sparkle…"
+# The App Store updates the app itself: self-update (Sparkle) is compiled out and not embedded.
+# Note: this replaces build/Murmur.app with that variant and leaves no DMG — run ./build.sh again for the DMG.
+MURMUR_APPSTORE=1 DEVELOPER_ID= NOTARY_PROFILE= ./build.sh >/dev/null
 
 OUT="build/appstore"
 APP="$OUT/Murmur.app"
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp -R build/Murmur.app "$APP"
 rm -f "$APP/Contents/_CodeSignature/CodeResources"
+if [ -e "$APP/Contents/Frameworks/Sparkle.framework" ] || otool -L "$APP/Contents/MacOS/Murmur" | grep -q Sparkle \
+   || /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+  echo "✗ В App Store-сборку попал Sparkle" >&2
+  exit 1
+fi
 
 echo "▸ App Store bundle ($BUNDLE_ID)…"
 PLIST="$APP/Contents/Info.plist"

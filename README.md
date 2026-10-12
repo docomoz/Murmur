@@ -12,7 +12,7 @@
 - **Пресеты**: Кафе, Фокус, Костёр, Море, 🎲 Наугад — одним кликом; свои миксы можно сохранять.
 - **Таймер сна** с плавным затуханием, глобальная пауза **⌃⌥P**, автозапуск при входе.
 - **Liquid Glass** на macOS 26+: панель на системном стекле, тема (системная/светлая/тёмная) и подложка (системное стекло или в цветах микса) и акцентный цвет (как в системе или один из 11 вариантов) настраиваются; иконка в строке меню мягко «дышит», пока играет звук.
-- Нативное приложение на SwiftUI + AVAudioEngine, без зависимостей. Apple Silicon и Intel, macOS 14+.
+- Нативное приложение на SwiftUI + AVAudioEngine; единственная зависимость — Sparkle для обновлений версии из DMG. Apple Silicon и Intel, macOS 14+.
 
 ## Установка
 
@@ -34,6 +34,8 @@ xattr -dr com.apple.quarantine /Applications/Murmur.app
 ./build.sh            # → build/Murmur.app и build/Murmur.dmg
 ```
 
+Первая сборка скачивает через SwiftPM [Sparkle](https://sparkle-project.org) — им обновляется версия из DMG.
+
 Отладка: `build/Murmur.app/Contents/MacOS/Murmur --selftest` (уровни и повторяемость всех звуков), `--playtest`, `--snapshot <prefix>`.
 
 Устройство проекта, архитектура и подводные камни — в [HANDOFF.md](HANDOFF.md).
@@ -42,4 +44,4 @@ xattr -dr com.apple.quarantine /Applications/Murmur.app
 
 Записи — из открытой библиотеки [Moodist](https://github.com/remvze/moodist) (Pixabay Content License и CC0), подробности в [CREDITS.md](CREDITS.md). Белый шум и сердцебиение синтезируются приложением.
 
-Код — под лицензией MIT, см. [LICENSE](LICENSE). На записи распространяются их собственные лицензии.
+Код — под лицензией MIT, см. [LICENSE](LICENSE). На записи распространяются их собственные лицензии. Автообновление — [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT).

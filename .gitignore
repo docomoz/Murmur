@@ -9,3 +9,6 @@ build/
 # Full-length render dumps from `--snapshot` (preview-top.png is kept for the README)
 preview-light.png
 preview-dark.png
+
+# Exported Sparkle EdDSA private keys (generate_keys -x) must never be committed
+*.key

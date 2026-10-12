@@ -620,6 +620,17 @@ enum MenuBuilder {
             store.setLaunchAtLogin(!store.launchAtLogin)
         })
         menu.addItem(.separator())
+        let updater = Updater.shared
+        if updater.isAvailable {
+            menu.addItem(ActionMenuItem(L("Проверить обновления…", "Check for Updates…"), enabled: updater.canCheckForUpdates) {
+                updater.checkForUpdates()
+            })
+            menu.addItem(ActionMenuItem(L("Проверять обновления автоматически", "Check for Updates Automatically"),
+                                        checked: updater.automaticallyChecks) {
+                updater.automaticallyChecks.toggle()
+            })
+            menu.addItem(.separator())
+        }
         menu.addItem(ActionMenuItem(L("О Murmur", "About Murmur")) { (NSApp.delegate as? AppDelegate)?.showAbout() })
         menu.addItem(ActionMenuItem(L("Выйти из Murmur", "Quit Murmur")) { NSApp.terminate(nil) })
         return menu

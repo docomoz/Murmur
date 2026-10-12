@@ -26,3 +26,7 @@
 | Мурлыканье кота    | animals/cat-purring.mp3         |
 | Виниловая пластинка| things/vinyl-effect.mp3         |
 | Поющая чаша        | things/singing-bowl.mp3         |
+
+# Программы
+
+Версия из DMG обновляется через **Sparkle** (https://sparkle-project.org, лицензия MIT); текст лицензии лежит в приложении: `Contents/Resources/Sparkle-LICENSE.txt`. В версии для App Store Sparkle нет.

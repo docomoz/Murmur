@@ -63,6 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
 
+        Updater.shared.start()
+
         let firstLaunch = !UserDefaults.standard.bool(forKey: "launchedBefore")
         UserDefaults.standard.set(true, forKey: "launchedBefore")
         if CommandLine.arguments.contains("--open-panel") {

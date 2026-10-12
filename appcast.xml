@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sparkle update feed for the DMG version of Murmur. Items are added by scripts/make_appcast.sh;
+     the app reads it from https://raw.githubusercontent.com/docomoz/Murmur/main/appcast.xml -->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Murmur</title>
+    <link>https://github.com/docomoz/Murmur</link>
+    <language>ru</language>
+  </channel>
+</rss>
