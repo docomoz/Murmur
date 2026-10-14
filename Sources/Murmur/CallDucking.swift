@@ -1,7 +1,7 @@
 import CoreAudio
 import Foundation
 
-/// «Тише во время созвонов»: watches whether another app is in a call (Zoom, Meet in a browser,
+/// Quiet During Calls: watches whether another app is in a call (Zoom, Meet in a browser,
 /// Telegram, FaceTime…) — without ever opening the mic itself, so no microphone permission is
 /// involved.
 ///

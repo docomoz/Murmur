@@ -20,7 +20,7 @@ INSTALLER_IDENTITY="${MAS_INSTALLER_IDENTITY:-}"
 PROFILE="${MAS_PROFILE:-}"
 
 if [ -n "$APP_IDENTITY" ] && { [ -z "$INSTALLER_IDENTITY" ] || [ -z "$PROFILE" ]; }; then
-  echo "✗ Для сборки на загрузку нужны все три: MAS_APP_IDENTITY, MAS_INSTALLER_IDENTITY и MAS_PROFILE" >&2
+  echo "✗ An upload build needs all three: MAS_APP_IDENTITY, MAS_INSTALLER_IDENTITY and MAS_PROFILE" >&2
   exit 1
 fi
 
@@ -36,7 +36,7 @@ cp -R build/Murmur.app "$APP"
 rm -f "$APP/Contents/_CodeSignature/CodeResources"
 if [ -e "$APP/Contents/Frameworks/Sparkle.framework" ] || otool -L "$APP/Contents/MacOS/Murmur" | grep -q Sparkle \
    || /usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$APP/Contents/Info.plist" >/dev/null 2>&1; then
-  echo "✗ В App Store-сборку попал Sparkle" >&2
+  echo "✗ Sparkle got into the App Store build" >&2
   exit 1
 fi
 
@@ -53,8 +53,8 @@ if [ -z "$APP_IDENTITY" ]; then
   echo "▸ Signing ad-hoc with the sandbox (local test only)…"
   codesign --force --sign - --entitlements "$ENTITLEMENTS" "$APP"
   codesign -d --entitlements - "$APP" 2>/dev/null | grep -q app-sandbox
-  echo "✓ Тестовая версия в песочнице: $(pwd)/$APP"
-  echo "  Загрузить в App Store её нельзя — для этого нужны сертификаты (см. AppStore/README.md)."
+  echo "✓ Sandboxed test build: $(pwd)/$APP"
+  echo "  It can't be uploaded to the App Store — that needs certificates (see AppStore/README.md)."
   exit 0
 fi
 
@@ -64,7 +64,7 @@ security cms -D -i "$PROFILE" > "$PROFILE_PLIST"
 APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.application-identifier" "$PROFILE_PLIST")
 TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.team-identifier" "$PROFILE_PLIST")
 if [ "$APP_ID" != "$TEAM_ID.$BUNDLE_ID" ]; then
-  echo "✗ Профиль выписан на $APP_ID, а приложение — $TEAM_ID.$BUNDLE_ID" >&2
+  echo "✗ The profile is issued for $APP_ID, but the app is $TEAM_ID.$BUNDLE_ID" >&2
   exit 1
 fi
 cp "$PROFILE" "$APP/Contents/embedded.provisionprofile"
@@ -81,5 +81,5 @@ pkgutil --check-signature "$OUT/Murmur.pkg" | head -3
 
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST")
 BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST")
-echo "✓ Готово к загрузке: $(pwd)/$OUT/Murmur.pkg (версия $VERSION, сборка $BUILD)"
-echo "  Открой Transporter и перетащи туда Murmur.pkg."
+echo "✓ Ready to upload: $(pwd)/$OUT/Murmur.pkg (version $VERSION, build $BUILD)"
+echo "  Open Transporter and drag Murmur.pkg into it."

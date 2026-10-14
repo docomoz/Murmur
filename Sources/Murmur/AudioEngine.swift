@@ -53,7 +53,7 @@ final class AudioEngine {
 
     // MARK: Public
 
-    /// «Живой микс»: each generator channel's level slowly wanders around its target
+    /// Living Mix: each generator channel's level slowly wanders around its target
     /// (`Sound.drift`). Toggling glides in/out on the audio thread; no timer is involved.
     var livingMix: Bool {
         get { driftSwitch.enabled }

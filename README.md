@@ -1,53 +1,54 @@
 # Murmur
 
-Звуки природы для фокуса и сна прямо в строке меню macOS. Смешивайте дождь, костёр, прибой, кафе, китов, шумы и тоны — каждый со своей громкостью — и работайте под них в фоне.
+Nature sounds for focus and sleep, right in the macOS menu bar. Mix rain, a campfire, ocean waves, a café, whales, noises and tones — each at its own volume — and keep them playing in the background while you work.
 
-<img src="preview-top.png" width="292" alt="Murmur: панель в строке меню">
+<img src="preview-top.png" width="292" alt="Murmur: the menu bar panel">
 
-## Возможности
+## Features
 
-- **21 звук без дублей**: дождь, гроза, морской прибой, ручей, под водой, костёр, ветер, птицы, сверчки, киты, улица, кафе, поезд, библиотека, клавиатура, часы, сердцебиение, мурлыканье кота, виниловая пластинка, поющая чаша, белый шум.
-- **Никаких заметных повторов.** Записи не крутятся петлёй: гранулярный движок непрерывно собирает звук из случайных фрагментов записи со случайной длиной, скоростью, тоном и панорамой. Киты — три слоя (песня, далёкая стая, океан), поющая чаша каждый раз звучит как другая чаша, у сердца живая вариабельность ритма, белый шум синтезируется в реальном времени.
-- **Ровная громкость**: все записи выровнены по громкости, общий лимитер не даёт миксу хрипеть.
-- **Пресеты**: Кафе, Фокус, Костёр, Море, 🎲 Наугад — одним кликом; свои миксы можно сохранять.
-- **Помодоро-таймер**: фокус 15–45 минут под ваш микс, перерыв — в тишине, смену фазы отмечает удар поющей чаши. Глобальная пауза **⌃⌥P**, автозапуск при входе.
-- **Liquid Glass** на macOS 26+: панель на системном стекле, тема (системная/светлая/тёмная) и подложка (системное стекло или в цветах микса) и акцентный цвет (как в системе или один из 11 вариантов) настраиваются; иконка в строке меню мягко «дышит», пока играет звук.
-- Нативное приложение на SwiftUI + AVAudioEngine; единственная зависимость — Sparkle для обновлений версии из DMG. Apple Silicon и Intel, macOS 14+.
+- **21 sounds, no duplicates**: rain, thunderstorm, ocean waves, stream, underwater, campfire, wind, birds, crickets, whales, street, café, train, library, keyboard, clock, heartbeat, purring cat, vinyl record, singing bowl, white noise.
+- **No noticeable repeats.** Recordings never spin as a loop: a granular engine keeps building the sound from random fragments of each recording with random length, speed, pitch and stereo position. Whales are three layers (the song, a distant pod, the ocean), every strike of the singing bowl sounds like a different bowl, the heartbeat has a living rhythm variability, white noise is synthesized in real time.
+- **Even loudness**: all recordings are loudness-matched, and a master limiter keeps the mix from clipping.
+- **Presets**: Café, Focus, Campfire, Sea, 🎲 Shuffle — one click away; you can save your own mixes.
+- **Pomodoro timer**: 15–45 minutes of focus to your mix, breaks in silence, a singing-bowl strike marks each phase change. Global pause **⌃⌥P**, launch at login.
+- **Liquid Glass** on macOS 26+: the panel sits on system glass; the theme (system/light/dark), the backdrop (system glass or tinted with the mix's colors) and the accent color (system or one of 11 options) are configurable; the menu bar icon gently "breathes" while sound is playing.
+- The UI is in English, or in Russian when Russian is the Mac's first language.
+- A native SwiftUI + AVAudioEngine app; the only dependency is Sparkle, which updates the DMG version. Apple Silicon and Intel, macOS 14+.
 
-## Установка
+## Installation
 
-Скачайте `Murmur.dmg` из [Releases](../../releases), перетащите Murmur в «Программы».
+Download `Murmur.dmg` from [Releases](../../releases) and drag Murmur to Applications.
 
-Или через Homebrew:
+Or with Homebrew:
 
 ```bash
 brew install --cask docomoz/tap/murmur
 ```
 
-Приложение подписано ad-hoc (без сертификата Apple Developer), поэтому при первом запуске macOS попросит подтверждения: «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть». Или:
+The app is signed ad-hoc (no Apple Developer certificate), so on first launch macOS asks for confirmation: System Settings → Privacy & Security → Open Anyway. Or:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Murmur.app
 ```
 
-Иконка-волна появится в строке меню. Если её не видно (например, спряталась за «чёлкой»), повторный запуск Murmur откроет микшер обычным окном.
+A waveform icon appears in the menu bar. If you can't see it (for example, it's hidden behind the notch), launching Murmur again opens the mixer as a regular window.
 
-## Сборка из исходников
+## Building from source
 
-Нужны только Command Line Tools (Xcode не обязателен):
+Requires Xcode (the App Intents metadata step uses its tools):
 
 ```bash
-./build.sh            # → build/Murmur.app и build/Murmur.dmg
+./build.sh            # → build/Murmur.app and build/Murmur.dmg
 ```
 
-Первая сборка скачивает через SwiftPM [Sparkle](https://sparkle-project.org) — им обновляется версия из DMG.
+The first build fetches [Sparkle](https://sparkle-project.org) through SwiftPM — it updates the DMG version.
 
-Отладка: `build/Murmur.app/Contents/MacOS/Murmur --selftest` (уровни и повторяемость всех звуков), `--playtest`, `--snapshot <prefix>`.
+Debugging: `build/Murmur.app/Contents/MacOS/Murmur --selftest` (levels and repetition of every sound), `--playtest`, `--snapshot <prefix>`.
 
-Устройство проекта, архитектура и подводные камни — в [HANDOFF.md](HANDOFF.md).
+Project layout, architecture and gotchas are in [HANDOFF.md](HANDOFF.md).
 
-## Звуки и лицензии
+## Sounds and licenses
 
-Записи — из открытой библиотеки [Moodist](https://github.com/remvze/moodist) (Pixabay Content License и CC0), подробности в [CREDITS.md](CREDITS.md). Белый шум и сердцебиение синтезируются приложением.
+Recordings come from the open [Moodist](https://github.com/remvze/moodist) library (Pixabay Content License and CC0); details in [CREDITS.md](CREDITS.md). White noise and the heartbeat are synthesized by the app.
 
-Код — под лицензией MIT, см. [LICENSE](LICENSE). На записи распространяются их собственные лицензии. Автообновление — [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT).
+The code is MIT-licensed, see [LICENSE](LICENSE). The recordings are covered by their own licenses. Self-update is [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT).

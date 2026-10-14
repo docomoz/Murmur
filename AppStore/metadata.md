@@ -1,84 +1,25 @@
-# Murmur — страница в App Store
+# Murmur — the App Store page
 
-Всё, что нужно вставить в App Store Connect. Лимиты Apple указаны в скобках; тексты в них укладываются
-(проверено скриптом). Основной язык — русский, вторая локализация — английский.
+Everything to paste into App Store Connect. Apple's limits are in parentheses; the texts fit them
+(checked with a script). The primary language is English; Russian is the second localization.
 
-## Общее (не зависит от языка)
+## General (language-independent)
 
-| Поле | Значение |
+| Field | Value |
 |---|---|
 | Bundle ID | `com.docomoz.murmur` |
 | SKU | `murmur-mac` |
-| Основная категория | Производительность (Productivity) |
-| Дополнительная категория | Здоровье и фитнес (Health & Fitness) |
-| Цена | Бесплатно, все страны |
-| Возрастной рейтинг | 4+ — во всех вопросах анкеты ответ «Нет» / «None» |
-| Конфиденциальность приложения | «Данные не собираются» (Data Not Collected) |
-| Шифрование | Не используется (уже указано в сборке: `ITSAppUsesNonExemptEncryption = NO`) |
-| Авторские права | `2026 Maksim Berezkin` |
-| Поддержка (Support URL) | https://github.com/docomoz/Murmur/issues |
-| Маркетинговый URL | https://github.com/docomoz/Murmur |
-| Политика конфиденциальности | https://github.com/docomoz/Murmur/blob/main/AppStore/PRIVACY.md |
-| Вход в аккаунт для проверки | Не требуется |
-
----
-
-## Русский
-
-**Название** (30): `Murmur — звуки для фокуса`
-
-**Подзаголовок** (30): `Дождь, костёр и море в меню`
-
-**Промотекст** (170, можно менять без новой проверки):
-```
-21 живой звук прямо в строке меню: дождь, костёр, прибой, киты, кафе. Гранулярный движок — звуки никогда не повторяются по кругу.
-```
-
-**Ключевые слова** (100, через запятую без пробелов):
-```
-белый шум,дождь,фокус,сон,медитация,концентрация,природа,релакс,учёба,работа,шум,ambient
-```
-
-**Описание** (4000):
-```
-Murmur — тихий фон для работы, учёбы и сна. Он живёт в строке меню: нажали на значок, смешали звуки — и вернулись к делам.
-
-ЗВУКИ, КОТОРЫЕ НЕ ПОВТОРЯЮТСЯ
-Короткая запись по кругу быстро надоедает: через пару минут мозг начинает узнавать повтор. В Murmur гранулярный движок непрерывно собирает звук из живых фрагментов записи — с разной длиной, темпом и панорамой. Дождь остаётся дождём, но никогда не звучит одинаково.
-
-21 ЗВУК
-• Вода: дождь, гроза, морской прибой, ручей, под водой
-• Природа: костёр, ветер, птицы, сверчки, киты
-• Город: улица, кафе, поезд, библиотека
-• Дом: клавиатура, часы, сердцебиение, мурлыканье кота, виниловая пластинка, поющая чаша
-• Белый шум
-
-Киты поют в три слоя — песня, далёкая стая и толща океана. Каждый удар поющей чаши звучит как новая чаша. У сердцебиения живой, чуть плавающий ритм.
-
-МИКСЫ
-• Смешивайте любые звуки — у каждого своя громкость
-• Готовые миксы: Кафе, Фокус, Костёр, Море, Гроза, Ночной поезд, Библиотека
-• «Наугад» собирает осмысленную сцену: костёр летней ночью, кафе в дождь, глубина с китами
-• Сохраняйте свои миксы — они появятся первыми в строке пресетов
-
-ДЛЯ СНА И ФОКУСА
-• Помодоро-таймер: фокус под ваш микс, перерыв — в тишине
-• ⌃⌥P — пауза из любого приложения
-• Запуск при входе в систему
-
-КРАСИВО И НАТИВНО
-• Liquid Glass, светлая и тёмная темы
-• Подложка в цветах играющего микса
-• 12 акцентных цветов
-• Значок в строке меню мягко «дышит», пока играет звук
-
-ЧЕСТНО
-Без аккаунтов, рекламы, подписок и сбора данных. Работает полностью офлайн.
-
-Записи — из открытой библиотеки Moodist (Pixabay License и CC0).
-```
-
-**Что нового** (4000): `Первая версия в App Store.`
+| Primary category | Productivity |
+| Secondary category | Health & Fitness |
+| Price | Free, all countries |
+| Age rating | 4+ — answer "No" / "None" to every question |
+| App Privacy | Data Not Collected |
+| Encryption | Not used (already declared in the build: `ITSAppUsesNonExemptEncryption = NO`) |
+| Copyright | `2026 Maksim Berezkin` |
+| Support URL | https://github.com/docomoz/Murmur/issues |
+| Marketing URL | https://github.com/docomoz/Murmur |
+| Privacy Policy URL | https://github.com/docomoz/Murmur/blob/main/AppStore/PRIVACY.md |
+| Sign-in required for review | No |
 
 ---
 
@@ -88,12 +29,12 @@ Murmur — тихий фон для работы, учёбы и сна. Он ж�
 
 **Subtitle** (30): `Rain, fire & ocean in menu bar`
 
-**Promotional text** (170):
+**Promotional text** (170, can be changed without a new review):
 ```
 21 living sounds right in your menu bar: rain, fire, waves, whales, café. A granular engine makes sure they never loop.
 ```
 
-**Keywords** (100):
+**Keywords** (100, comma-separated, no spaces):
 ```
 white noise,rain,focus,sleep,ambient,meditation,nature,relax,study,concentration,calm,noise
 ```
@@ -137,11 +78,70 @@ No accounts, ads, subscriptions or data collection. Works completely offline.
 Recordings come from the open Moodist library (Pixabay License and CC0).
 ```
 
-**What's New**: `First release on the App Store.`
+**What's New** (4000): `First release on the App Store.`
 
 ---
 
-## Заметки для проверяющих (App Review Information → Notes), по-английски
+## Russian
+
+**Name** (30): `Murmur — звуки для фокуса`
+
+**Subtitle** (30): `Дождь, костёр и море в меню`
+
+**Promotional text** (170):
+```
+21 живой звук прямо в строке меню: дождь, костёр, прибой, киты, кафе. Гранулярный движок — звуки никогда не повторяются по кругу.
+```
+
+**Keywords** (100):
+```
+белый шум,дождь,фокус,сон,медитация,концентрация,природа,релакс,учёба,работа,шум,ambient
+```
+
+**Description** (4000):
+```
+Murmur — тихий фон для работы, учёбы и сна. Он живёт в строке меню: нажали на значок, смешали звуки — и вернулись к делам.
+
+ЗВУКИ, КОТОРЫЕ НЕ ПОВТОРЯЮТСЯ
+Короткая запись по кругу быстро надоедает: через пару минут мозг начинает узнавать повтор. В Murmur гранулярный движок непрерывно собирает звук из живых фрагментов записи — с разной длиной, темпом и панорамой. Дождь остаётся дождём, но никогда не звучит одинаково.
+
+21 ЗВУК
+• Вода: дождь, гроза, морской прибой, ручей, под водой
+• Природа: костёр, ветер, птицы, сверчки, киты
+• Город: улица, кафе, поезд, библиотека
+• Дом: клавиатура, часы, сердцебиение, мурлыканье кота, виниловая пластинка, поющая чаша
+• Белый шум
+
+Киты поют в три слоя — песня, далёкая стая и толща океана. Каждый удар поющей чаши звучит как новая чаша. У сердцебиения живой, чуть плавающий ритм.
+
+МИКСЫ
+• Смешивайте любые звуки — у каждого своя громкость
+• Готовые миксы: Кафе, Фокус, Костёр, Море, Гроза, Ночной поезд, Библиотека
+• «Наугад» собирает осмысленную сцену: костёр летней ночью, кафе в дождь, глубина с китами
+• Сохраняйте свои миксы — они появятся первыми в строке пресетов
+
+ДЛЯ СНА И ФОКУСА
+• Помодоро-таймер: фокус под ваш микс, перерыв — в тишине
+• ⌃⌥P — пауза из любого приложения
+• Запуск при входе в систему
+
+КРАСИВО И НАТИВНО
+• Liquid Glass, светлая и тёмная темы
+• Подложка в цветах играющего микса
+• 12 акцентных цветов
+• Значок в строке меню мягко «дышит», пока играет звук
+
+ЧЕСТНО
+Без аккаунтов, рекламы, подписок и сбора данных. Работает полностью офлайн.
+
+Записи — из открытой библиотеки Moodist (Pixabay License и CC0).
+```
+
+**What's New** (4000): `Первая версия в App Store.`
+
+---
+
+## Notes for the reviewers (App Review Information → Notes)
 
 ```
 Murmur is a menu bar app (LSUIElement, no Dock icon).
@@ -161,22 +161,23 @@ The UI follows the system language: Russian if it is the first language, English
 
 ---
 
-## Скриншоты
+## Screenshots
 
-Mac App Store: от 1 до 10 картинок 16:10 — 2880×1800 (или 2560×1600 / 1440×900 / 1280×800).
+Mac App Store: 1 to 10 images at 16:10 — 2880×1800 (or 2560×1600 / 1440×900 / 1280×800).
+Make one set per localization: the English set with the Mac in English, the Russian one with Russian as the first language.
 
-1. Открой панель Murmur, включи красивый микс.
-2. ⌘⇧4, затем пробел, затем клик по панели — macOS сохранит её на прозрачном фоне с тенью.
-3. Оформи кадр (из папки проекта):
+1. Open the Murmur panel and start a good-looking mix.
+2. ⌘⇧4, then Space, then click the panel — macOS saves it on a transparent background with a shadow.
+3. Frame the shot (from the project folder):
    ```
-   swift scripts/make_screenshot.swift ~/Desktop/panel.png "Звуки, которые не повторяются" "Дождь, костёр, море и ещё 18 звуков — смешивайте прямо в строке меню." shot1.png
+   swift scripts/make_screenshot.swift ~/Desktop/panel.png "Sounds that never loop" "Rain, a campfire, the sea and 18 more sounds — mix them right in the menu bar." shot1.png
    ```
 
-Идеи для серии:
-| # | Что на панели | Заголовок | Подпись |
-|---|---|---|---|
-| 1 | Микс «Кафе» | Звуки, которые не повторяются | Дождь, костёр, море и ещё 18 звуков — смешивайте прямо в строке меню. |
-| 2 | Киты + под водой, подложка в цветах микса | Киты поют в три слоя | Песня, далёкая стая и толща океана — каждый раз по-новому. |
-| 3 | Строка пресетов со своими миксами | Свои миксы — в одно касание | Сохраняйте любимые сочетания, а «Наугад» соберёт новую сцену. |
-| 4 | Меню помодоро, идёт фокус | Фокус по помодоро | Перерыв — в тишине, смену отметит поющая чаша. ⌃⌥P — пауза из любого приложения. |
-| 5 | Тёмная тема, другой акцент | Liquid Glass и 12 акцентов | Светлая и тёмная темы, подложка в цветах микса. |
+Ideas for the set:
+| # | On the panel | Title | Caption | Title (RU) | Caption (RU) |
+|---|---|---|---|---|---|
+| 1 | The Café mix | Sounds that never loop | Rain, a campfire, the sea and 18 more sounds — mix them right in the menu bar. | Звуки, которые не повторяются | Дождь, костёр, море и ещё 18 звуков — смешивайте прямо в строке меню. |
+| 2 | Whales + underwater, backdrop in the mix's colors | Whales sing in three layers | The song, a distant pod and the deep ocean — different every time. | Киты поют в три слоя | Песня, далёкая стая и толща океана — каждый раз по-новому. |
+| 3 | The preset strip with your own mixes | Your mixes, one click away | Save your favorite combinations, and Shuffle builds a new scene. | Свои миксы — в одно касание | Сохраняйте любимые сочетания, а «Наугад» соберёт новую сцену. |
+| 4 | The Pomodoro menu during focus | Pomodoro focus | Breaks in silence, a singing bowl marks each change. ⌃⌥P pauses from any app. | Фокус по помодоро | Перерыв — в тишине, смену отметит поющая чаша. ⌃⌥P — пауза из любого приложения. |
+| 5 | Dark theme, another accent | Liquid Glass and 12 accents | Light and dark themes, a backdrop in the mix's colors. | Liquid Glass и 12 акцентов | Светлая и тёмная темы, подложка в цветах микса. |

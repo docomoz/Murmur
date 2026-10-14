@@ -64,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         Updater.shared.start()
-        // Siri / Spotlight phrases with a mix name («Включи Фокус в Murmur») need the current list of mixes.
+        // Siri / Spotlight phrases with a mix name ("Play Focus in Murmur") need the current list of mixes.
         MurmurShortcuts.updateAppShortcutParameters()
 
         let firstLaunch = !UserDefaults.standard.bool(forKey: "launchedBefore")
@@ -446,7 +446,7 @@ enum SelfTest {
               + (recorders.isEmpty ? "nobody" : recorders.joined(separator: ", "))
               + "; would duck for: " + (calls.isEmpty ? "nobody" : calls.joined(separator: ", ")))
 
-        print("\nНаугад, примеры:")
+        print("\nShuffle, examples:")
         for _ in 0..<12 {
             let levels = MainActor.assumeIsolated { MixStore.randomLevels() }
             print("  " + levels.sorted { $0.value > $1.value }.compactMap { Sound.byID[$0.key]?.name }.joined(separator: " + "))
@@ -502,7 +502,7 @@ enum SelfTest {
         print("  mixes offered to Shortcuts: \(mixes)")
     }
 
-    /// «Живой микс»: every sound's drift stays within ±`drift` dB, moves slowly (no faster than
+    /// Living Mix: every sound's drift stays within ±`drift` dB, moves slowly (no faster than
     /// `maxRate` dB/s, also while being switched off), really moves, and is exactly 1.0 for sounds
     /// without drift and once the feature is off. Also renders the wrapper over a constant signal
     /// to make sure the gain is interpolated inside buffers (no zipper steps).
@@ -536,7 +536,7 @@ enum SelfTest {
                 summary.append(String(format: "%@ ±%.1f (%.1f…%+.1f, %.2f dB/s)", sound.id as NSString, sound.drift, lo, hi, rate))
             }
 
-            // Switching «Живой микс» off glides back to exactly 1.0, slowly.
+            // Switching Living Mix off glides back to exactly 1.0, slowly.
             var fading = rate
             for _ in 0..<Int((Drift.toggleTime + 1) / dt) {
                 let v = db(drift.advance(dt, enabled: false))
@@ -587,7 +587,7 @@ enum SelfTest {
 
     /// The Pomodoro cue: decodes, has a soft tail, no NaN, no clipping.
     private static func reportChime() {
-        print("\nПомодоро, сигнал (чаша):")
+        print("\nPomodoro cue (bowl):")
         for pitch in [1.0, 0.84] {
             guard let buffer = try? Chime.buffer(pitch: pitch), let data = buffer.floatChannelData else {
                 print("  FAIL chime pitch \(pitch)")
@@ -686,7 +686,7 @@ enum SelfTest {
         store.togglePlay()
         expect(store.pomodoro?.phase == .focus && store.isPlaying, "play ends the break")
 
-        // Stopping leaves the sound alone; starting with nothing chosen plays «Фокус».
+        // Stopping leaves the sound alone; starting with nothing chosen plays Focus.
         store.stopPomodoro()
         expect(store.pomodoro == nil && store.isPlaying, "stop keeps the sound")
         store.stopAll()
@@ -697,7 +697,7 @@ enum SelfTest {
         store.stopAll()
         expect(store.pomodoro == nil, "stop all ends Pomodoro")
 
-        print("\nПомодоро: " + (failures.isEmpty ? "OK" : "FAIL"))
+        print("\nPomodoro: " + (failures.isEmpty ? "OK" : "FAIL"))
         failures.forEach { print("  ✗ " + $0) }
         return failures.isEmpty
     }
@@ -767,8 +767,8 @@ enum SelfTest {
         MixStore.sandboxed = true
         let store = MixStore()
         store.previewUserMixes([
-            Mix(id: "u1", name: "Вечерний", emoji: "🌙", levels: ["rain": 0.5, "vinyl": 0.3]),
-            Mix(id: "u2", name: "Глубина", emoji: "🫧", levels: ["whale": 0.6, "underwater": 0.4]),
+            Mix(id: "u1", name: L("Вечерний", "Evening"), emoji: "🌙", levels: ["rain": 0.5, "vinyl": 0.3]),
+            Mix(id: "u2", name: L("Глубина", "Deep"), emoji: "🫧", levels: ["whale": 0.6, "underwater": 0.4]),
         ])
         store.apply(Mix.presets[0])
         store.setMaster(store.master)
@@ -843,7 +843,7 @@ enum SelfTest {
         MixStore.sandboxed = true
         let store = MixStore()
         store.setMaster(0.22)   // quiet while testing; the level report compensates for it
-        let mixes = Mix.presets + [Mix(id: "n", name: "Белый шум", emoji: "", levels: ["white": 0.5]), Mix(id: "b", name: "Чаша", emoji: "", levels: ["bowl": 0.6]), Mix(id: "c", name: "Кот+винил", emoji: "", levels: ["cat": 0.6, "vinyl": 0.5]), Mix(id: "w", name: "Киты", emoji: "", levels: ["whale": 0.7]), Mix(id: "h", name: "Сердце", emoji: "", levels: ["heartbeat": 0.6])]
+        let mixes = Mix.presets + [Mix(id: "n", name: "White noise", emoji: "", levels: ["white": 0.5]), Mix(id: "b", name: "Bowl", emoji: "", levels: ["bowl": 0.6]), Mix(id: "c", name: "Cat+vinyl", emoji: "", levels: ["cat": 0.6, "vinyl": 0.5]), Mix(id: "w", name: "Whales", emoji: "", levels: ["whale": 0.7]), Mix(id: "h", name: "Heart", emoji: "", levels: ["heartbeat": 0.6])]
         var index = 0
         func next() {
             guard index < mixes.count else {
@@ -851,7 +851,7 @@ enum SelfTest {
                 store.stopAll()
                 store.debugCue()
                 store.debugMeasure(after: 1.0, seconds: 2.0) { rms, channels in
-                    print(String(format: "%-12@ channels %d  output rms %.3f (%.1f dBFS)", "Сигнал помодоро" as NSString,
+                    print(String(format: "%-12@ channels %d  output rms %.3f (%.1f dBFS)", "Pomodoro cue" as NSString,
                                  channels, rms, 20 * log10(max(rms, 1e-6))))
                     exit(0)
                 }

@@ -5,7 +5,7 @@
   <channel>
     <title>Murmur</title>
     <link>https://github.com/docomoz/Murmur</link>
-    <language>ru</language>
+    <language>en</language>
     <item>
       <title>Murmur 1.12</title>
       <pubDate>Wed, 14 Oct 2026 10:51:05 +0000</pubDate>
@@ -13,7 +13,11 @@
       <sparkle:version>14</sparkle:version>
       <sparkle:shortVersionString>1.12</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description sparkle:format="markdown"><![CDATA[- **Помодоро-таймер вместо таймера сна.** Кнопка «Помодоро» внизу панели: фокус 15, 20, 25, 30 или 45 минут под ваш микс, затем перерыв 5 минут (каждый четвёртый — 15).
+      <description xml:lang="en" sparkle:format="markdown"><![CDATA[- **A Pomodoro timer replaces the sleep timer.** The Pomodoro button at the bottom of the panel: 15, 20, 25, 30 or 45 minutes of focus to your mix, then a 5-minute break (every fourth one is 15).
+- **Breaks are silent.** When focus ends, a singing bowl strikes and the mix fades out. After the break the bowl sounds again and the same mix comes back.
+- **Pause stops the timer too.** Pause the sound during focus and the countdown freezes; Play resumes it. Play during a break ends it early.
+- In Shortcuts: "Pomodoro Timer" with a choice of minutes, and "Stop Pomodoro".]]></description>
+      <description xml:lang="ru" sparkle:format="markdown"><![CDATA[- **Помодоро-таймер вместо таймера сна.** Кнопка «Помодоро» внизу панели: фокус 15, 20, 25, 30 или 45 минут под ваш микс, затем перерыв 5 минут (каждый четвёртый — 15).
 - **Перерыв — в тишине.** Когда фокус заканчивается, звучит удар поющей чаши и микс плавно стихает. После перерыва — снова чаша, и тот же микс возвращается.
 - **Пауза останавливает и таймер.** Поставили звук на паузу во время фокуса — отсчёт замер; Play продолжает. Play во время перерыва заканчивает его досрочно.
 - В «Быстрых командах»: «Помодоро-таймер» с выбором минут и «Остановить помодоро».]]></description>
@@ -26,7 +30,8 @@
       <sparkle:version>13</sparkle:version>
       <sparkle:shortVersionString>1.11.1</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description sparkle:format="markdown"><![CDATA[- **Murmur больше не нагружает процессор в фоне.** В 1.11 функция «Тише во время созвонов» при каждом звуке любого приложения (уведомление, сообщение, видео в браузере) заново проверяла все аудиопроцессы — и чем дольше Murmur был запущен, тем дороже обходилась каждая проверка. Даже без звука он мог расходовать заметную долю батареи. Исправлено: теперь на чужой звук уходят миллисекунды.]]></description>
+      <description xml:lang="en" sparkle:format="markdown"><![CDATA[- **Murmur no longer loads the CPU in the background.** In 1.11, Quiet During Calls rechecked every audio process on each sound from any app (a notification, a message, a video in the browser) — and the longer Murmur ran, the more each check cost. Even with no sound playing it could use a noticeable share of the battery. Fixed: a sound from another app now costs milliseconds.]]></description>
+      <description xml:lang="ru" sparkle:format="markdown"><![CDATA[- **Murmur больше не нагружает процессор в фоне.** В 1.11 функция «Тише во время созвонов» при каждом звуке любого приложения (уведомление, сообщение, видео в браузере) заново проверяла все аудиопроцессы — и чем дольше Murmur был запущен, тем дороже обходилась каждая проверка. Даже без звука он мог расходовать заметную долю батареи. Исправлено: теперь на чужой звук уходят миллисекунды.]]></description>
       <enclosure url="https://github.com/docomoz/Murmur/releases/download/v1.11.1/Murmur.dmg" length="40245231" type="application/octet-stream" sparkle:edSignature="2yB/cGkM7/pwnVrg0oOghdzwYWZdEuSfxtERah1WvXKVlxddz69CNh6DHc5s0fjWMdjCFx/dc/uvH4IlwURgAw=="/>
     </item>
     <item>
@@ -36,7 +41,13 @@
       <sparkle:version>12</sparkle:version>
       <sparkle:shortVersionString>1.11</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <description sparkle:format="markdown"><![CDATA[- **Тише во время созвонов.** Когда идёт звонок (Zoom, Meet, Telegram, Kontur Talk…), Murmur плавно стихает и возвращается после него. Микс и громкости не меняются. Выключается в ⚙.
+      <description xml:lang="en" sparkle:format="markdown"><![CDATA[- **Quiet During Calls.** When a call is on (Zoom, Meet, Telegram, Kontur Talk…), Murmur fades out and comes back after it. The mix and the volumes don't change. Turn it off in ⚙.
+- **Living Mix.** Each sound's volume slowly "breathes" around its slider: the rain swells and eases, the café fills up and empties. Turn it off in ⚙.
+- **Pomodoro.** The Timer button at the bottom: 25/5, 50/10 and 90/20 rhythms; during a break the mix crossfades to Sea (or any other mix, or silence), and a singing bowl strike marks each phase change. The countdown shows in the menu bar.
+- **Shortcuts and Focus.** The actions Play Mix, Shuffle, Pause, Sleep Timer and Volume are in Spotlight, Shortcuts and Siri. A Focus filter: for example, turning on the Work focus starts the Focus mix by itself.
+- **Self-update.** Starting with this version Murmur offers updates by itself (⚙ → Check for Updates…). From 1.10 and earlier, update manually once.
+- **A new DMG:** just the app and the Applications folder with an arrow.]]></description>
+      <description xml:lang="ru" sparkle:format="markdown"><![CDATA[- **Тише во время созвонов.** Когда идёт звонок (Zoom, Meet, Telegram, Kontur Talk…), Murmur плавно стихает и возвращается после него. Микс и громкости не меняются. Выключается в ⚙.
 - **Живой микс.** Громкость каждого звука медленно «дышит» вокруг ползунка: дождь то усиливается, то стихает, кафе наполняется и пустеет. Выключается в ⚙.
 - **Помодоро.** Кнопка «Таймер» внизу: ритмы 25/5, 50/10 и 90/20, в перерыв микс плавно сменяется на «Море» (или любой другой, или тишину), смену фазы отмечает удар поющей чаши. Отсчёт виден в строке меню.
 - **Быстрые команды и фокусы.** Действия «Включить микс», «Наугад», «Пауза», «Таймер сна», «Громкость» — в Spotlight, «Быстрых командах» и Siri. Фильтр фокуса: например, при включении фокуса «Работа» сам заиграет микс «Фокус».

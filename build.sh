@@ -17,18 +17,18 @@ cd "$(dirname "$0")"
 DEVELOPER_ID="${DEVELOPER_ID:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 if [ -n "$NOTARY_PROFILE" ] && [ -z "$DEVELOPER_ID" ]; then
-  echo "✗ NOTARY_PROFILE задан без DEVELOPER_ID: нотаризовать можно только подписанное Developer ID" >&2
+  echo "✗ NOTARY_PROFILE is set without DEVELOPER_ID: only a Developer ID-signed app can be notarized" >&2
   exit 1
 fi
 
 APPSTORE="${MURMUR_APPSTORE:-}"
 if [ -n "$APPSTORE" ] && [ -n "$DEVELOPER_ID$NOTARY_PROFILE" ]; then
-  echo "✗ MURMUR_APPSTORE собирается только с ad-hoc подписью (App Store-подпись ставит build-appstore.sh)" >&2
+  echo "✗ MURMUR_APPSTORE builds only with an ad-hoc signature (build-appstore.sh applies the App Store signature)" >&2
   exit 1
 fi
 # The DMG window is laid out by Finder, which can't tell two volumes named «Murmur» apart.
 if [ -z "$APPSTORE" ] && [ -d /Volumes/Murmur ]; then
-  echo "✗ Уже смонтирован том «Murmur» (скачанный DMG?) — извлеките его: hdiutil detach /Volumes/Murmur" >&2
+  echo "✗ A volume named "Murmur" is already mounted (a downloaded DMG?) — eject it: hdiutil detach /Volumes/Murmur" >&2
   exit 1
 fi
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/docomoz/Murmur/main/appcast.xml}"
@@ -118,13 +118,13 @@ if [ -z "$APPSTORE" ] && [ -n "$SPARKLE_PUBLIC_KEY" ]; then
     -c "Add :SUPublicEDKey string $SPARKLE_PUBLIC_KEY" \
     -c "Add :SUEnableAutomaticChecks bool true" "$APP/Contents/Info.plist"
 elif [ -z "$APPSTORE" ]; then
-  echo "  (автообновление выключено: нет Resources/sparkle-public-key.txt или SPARKLE_PUBLIC_KEY)"
+  echo "  (self-update is off: no Resources/sparkle-public-key.txt or SPARKLE_PUBLIC_KEY)"
 fi
 echo "▸ App Intents metadata…"
 # Same tools and flags as Xcode's "Extract app intents metadata" and "App Intents SSU training"
 # build steps. The metadata is architecture-neutral, so the arm64 compile-time values are enough.
 if ! xcrun --find appintentsmetadataprocessor >/dev/null 2>&1; then
-  echo "✗ Нет appintentsmetadataprocessor: нужен полный Xcode (xcode-select -s /Applications/Xcode.app)" >&2
+  echo "✗ No appintentsmetadataprocessor: the full Xcode is required (xcode-select -s /Applications/Xcode.app)" >&2
   exit 1
 fi
 ls "$PWD"/Sources/Murmur/*.swift > build/intents/sources.txt
@@ -133,7 +133,7 @@ ls "$PWD"/Sources/Murmur/*.swift > build/intents/sources.txt
 find "$PWD/.build" -ipath '*release*' -path '*/arm64/*' -name '*.swiftconstvalues' -print0 \
   | xargs -0 ls -t 2>/dev/null | head -1 > build/intents/constvalues.txt || true
 if [ ! -s build/intents/constvalues.txt ]; then
-  echo "✗ Компилятор не выдал .swiftconstvalues — Metadata.appintents не из чего собрать" >&2
+  echo "✗ The compiler produced no .swiftconstvalues — nothing to build Metadata.appintents from" >&2
   exit 1
 fi
 XCODE_BUILD=$(xcodebuild -version | awk '/Build version/ { print $3 }')
@@ -163,7 +163,7 @@ xcrun appintentsnltrainingprocessor \
   --source-file Resources/Localization/en.lproj/AppShortcuts.strings \
   --archive-ssu-assets > build/intents/training.log 2>&1 \
   || { cat build/intents/training.log >&2; exit 1; }
-[ -s "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata" ] || { echo "✗ Нет Metadata.appintents" >&2; exit 1; }
+[ -s "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata" ] || { echo "✗ No Metadata.appintents" >&2; exit 1; }
 rm -rf build/intents
 
 # Submits a file to Apple's notary service and fails the build unless it is accepted.
@@ -175,7 +175,7 @@ notarize() {
   id=$(plutil -extract id raw -o - build/notary.json)
   rm build/notary.json
   if [ "$status" != "Accepted" ]; then
-    echo "✗ Нотаризация $file: $status" >&2
+    echo "✗ Notarization of $file: $status" >&2
     xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" >&2
     exit 1
   fi
@@ -203,17 +203,17 @@ fi
 codesign --verify --deep --strict "$APP"
 if [ -n "$DEVELOPER_ID" ] && ! "$APP/Contents/MacOS/Murmur" --selftest >/dev/null 2>&1; then
   # Catches a framework that dyld refuses under the hardened runtime before it reaches notarization.
-  echo "✗ Подписанное приложение не запускается (--selftest); проверь подпись Sparkle.framework" >&2
+  echo "✗ The signed app does not launch (--selftest); check the Sparkle.framework signature" >&2
   exit 1
 fi
 
 if [ -n "$APPSTORE" ]; then
-  echo "✓ Основа для App Store (без Sparkle): $(pwd)/$APP"
+  echo "✓ App Store base (no Sparkle): $(pwd)/$APP"
   exit 0
 fi
 
 if [ -n "$NOTARY_PROFILE" ]; then
-  echo "▸ Notarizing app (обычно 1–5 мин)…"
+  echo "▸ Notarizing app (usually 1–5 min)…"
   ditto -c -k --keepParent "$APP" build/Murmur.zip
   notarize build/Murmur.zip
   rm build/Murmur.zip
@@ -287,4 +287,4 @@ if [ -n "$NOTARY_PROFILE" ]; then
   spctl --assess --type open --context context:primary-signature --verbose=2 build/Murmur.dmg
 fi
 
-echo "✓ Готово: $(pwd)/build/Murmur.app и build/Murmur.dmg ($(du -h build/Murmur.dmg | cut -f1))"
+echo "✓ Done: $(pwd)/build/Murmur.app and build/Murmur.dmg ($(du -h build/Murmur.dmg | cut -f1))"

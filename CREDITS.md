@@ -1,32 +1,32 @@
-# Звуки
+# Sounds
 
-Записи взяты из открытой библиотеки **Moodist** — https://github.com/remvze/moodist
-Лицензии: Pixabay Content License (https://pixabay.com/service/license-summary/) и CC0 (https://creativecommons.org/publicdomain/zero/1.0/).
+Recordings come from the open **Moodist** library — https://github.com/remvze/moodist
+Licenses: Pixabay Content License (https://pixabay.com/service/license-summary/) and CC0 (https://creativecommons.org/publicdomain/zero/1.0/).
 
-Белый шум и сердцебиение синтезируются приложением в реальном времени.
+White noise and the heartbeat are synthesized by the app in real time.
 
-| Звук в Murmur      | Файл Moodist                    |
+| Sound in Murmur    | Moodist file                    |
 |--------------------|---------------------------------|
-| Дождь              | rain/light-rain.mp3             |
-| Гроза              | rain/thunder.mp3                |
-| Морской прибой     | nature/waves.mp3                |
-| Ручей              | nature/river.mp3                |
-| Костёр             | nature/campfire.mp3             |
-| Ветер              | nature/wind.mp3                 |
-| Птицы              | animals/birds.mp3               |
-| Сверчки            | animals/crickets.mp3            |
-| Киты               | animals/whale.mp3 + places/underwater.mp3 |
-| Улица              | urban/busy-street.mp3           |
-| Кафе               | places/cafe.mp3                 |
-| Поезд              | transport/inside-a-train.mp3    |
-| Библиотека         | places/library.mp3              |
-| Клавиатура         | things/keyboard.mp3             |
-| Часы               | things/clock.mp3                |
-| Под водой          | places/underwater.mp3           |
-| Мурлыканье кота    | animals/cat-purring.mp3         |
-| Виниловая пластинка| things/vinyl-effect.mp3         |
-| Поющая чаша        | things/singing-bowl.mp3         |
+| Rain               | rain/light-rain.mp3             |
+| Thunderstorm       | rain/thunder.mp3                |
+| Ocean waves        | nature/waves.mp3                |
+| Stream             | nature/river.mp3                |
+| Campfire           | nature/campfire.mp3             |
+| Wind               | nature/wind.mp3                 |
+| Birds              | animals/birds.mp3               |
+| Crickets           | animals/crickets.mp3            |
+| Whales             | animals/whale.mp3 + places/underwater.mp3 |
+| Street             | urban/busy-street.mp3           |
+| Café               | places/cafe.mp3                 |
+| Train              | transport/inside-a-train.mp3    |
+| Library            | places/library.mp3              |
+| Keyboard           | things/keyboard.mp3             |
+| Clock              | things/clock.mp3                |
+| Underwater         | places/underwater.mp3           |
+| Purring cat        | animals/cat-purring.mp3         |
+| Vinyl record       | things/vinyl-effect.mp3         |
+| Singing bowl       | things/singing-bowl.mp3         |
 
-# Программы
+# Software
 
-Версия из DMG обновляется через **Sparkle** (https://sparkle-project.org, лицензия MIT); текст лицензии лежит в приложении: `Contents/Resources/Sparkle-LICENSE.txt`. В версии для App Store Sparkle нет.
+The DMG version updates itself with **Sparkle** (https://sparkle-project.org, MIT License); the license text ships inside the app: `Contents/Resources/Sparkle-LICENSE.txt`. The App Store version doesn't include Sparkle.

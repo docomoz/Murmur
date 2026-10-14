@@ -255,7 +255,7 @@ private struct PresetStrip: View {
         let kind: Kind
     }
 
-    /// «Наугад» first, then your saved mixes (newest first), then the built-in favourites.
+    /// Shuffle first, then your saved mixes (newest first), then the built-in favourites.
     private var items: [Item] {
         [Item(id: "random", emoji: "🎲", title: L("Наугад", "Shuffle"), kind: .random)]
             + store.userMixes.reversed().map { Item(id: $0.id, emoji: $0.emoji, title: $0.name, kind: .mix($0)) }
@@ -517,7 +517,7 @@ private struct FooterView: View {
                         .monospacedDigit()
                         .lineLimit(1)
                 }
-                .fixedSize()   // never «Перерыв 5…»: the spacer gives way, not the countdown
+                .fixedSize()   // never "Break 5…": the spacer gives way, not the countdown
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.link)
                 .padding(.horizontal, 10)

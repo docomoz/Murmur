@@ -106,7 +106,7 @@ final class MixStore: ObservableObject {
     /// Running Pomodoro (nil = off).
     @Published private(set) var pomodoro: PomodoroState?
     @Published private(set) var pomodoroRemaining: TimeInterval?
-    /// The focus length offered first and used by «Начать» without a choice.
+    /// The focus length offered first and used by Start without a choice.
     @Published private(set) var pomodoroPlan: PomodoroPlan
     @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
     @Published var theme: PanelTheme {
@@ -121,7 +121,7 @@ final class MixStore: ObservableObject {
             Theme.accent = accent
         }
     }
-    /// «Тише во время созвонов»: fade out while another app is in a call (records and plays).
+    /// Quiet During Calls: fade out while another app is in a call (records and plays).
     @Published var duckDuringCalls: Bool {
         didSet {
             if !Self.sandboxed { defaults.set(duckDuringCalls, forKey: "duckDuringCalls") }
@@ -132,7 +132,7 @@ final class MixStore: ObservableObject {
     /// and play state are untouched — the duck is a separate gain on top of `master`.
     @Published private(set) var isDucked = false
 
-    /// «Живой микс»: levels slowly wander around the sliders (see `Drift`). On by default.
+    /// Living Mix: levels slowly wander around the sliders (see `Drift`). On by default.
     @Published var livingMix: Bool {
         didSet {
             if !Self.sandboxed { defaults.set(livingMix, forKey: "livingMix") }
@@ -291,7 +291,7 @@ final class MixStore: ObservableObject {
         persist()
     }
 
-    /// «Наугад»: a random but believable scene — one main sound plus 1–2 that belong with it.
+    /// Shuffle: a random but believable scene — one main sound plus 1–2 that belong with it.
     func randomMix() {
         apply(Mix(id: "random", name: "", emoji: "", levels: Self.randomLevels(avoiding: Set(active))))
     }
@@ -304,20 +304,20 @@ final class MixStore: ObservableObject {
     }
 
     static let scenes: [Scene] = [
-        Scene(anchors: ["rain"], extras: ["cafe", "vinyl", "keyboard", "clock", "cat"]),         // дождливый день
-        Scene(anchors: ["cafe"], extras: ["rain", "city", "vinyl", "keyboard"]),                // кафе
-        Scene(anchors: ["city"], extras: ["rain", "cafe"]),                                     // город
-        Scene(anchors: ["campfire"], extras: ["crickets", "wind", "river"]),                    // костёр ночью
-        Scene(anchors: ["crickets"], extras: ["river", "wind", "campfire"]),                    // летняя ночь
-        Scene(anchors: ["birds", "river"], extras: ["wind", "river", "birds", "bowl"]),         // лес днём
-        Scene(anchors: ["waves"], extras: ["wind", "rain"]),                                    // море
-        Scene(anchors: ["underwater", "whale"], extras: ["whale", "underwater"]),               // глубина
-        Scene(anchors: ["storm"], extras: ["rain", "wind", "cat", "clock"]),                    // гроза за окном
-        Scene(anchors: ["train"], extras: ["rain", "heartbeat", "vinyl"]),                      // ночной поезд
-        Scene(anchors: ["bowl"], extras: ["river", "wind", "birds"]),                           // медитация
-        Scene(anchors: ["library"], extras: ["clock", "keyboard", "rain"]),                     // библиотека
-        Scene(anchors: ["white"], extras: ["rain", "keyboard"]),                                // фокус
-        Scene(anchors: ["cat"], extras: ["vinyl", "rain", "clock", "heartbeat", "campfire"]),   // уют
+        Scene(anchors: ["rain"], extras: ["cafe", "vinyl", "keyboard", "clock", "cat"]),         // rainy day
+        Scene(anchors: ["cafe"], extras: ["rain", "city", "vinyl", "keyboard"]),                // café
+        Scene(anchors: ["city"], extras: ["rain", "cafe"]),                                     // city
+        Scene(anchors: ["campfire"], extras: ["crickets", "wind", "river"]),                    // campfire at night
+        Scene(anchors: ["crickets"], extras: ["river", "wind", "campfire"]),                    // summer night
+        Scene(anchors: ["birds", "river"], extras: ["wind", "river", "birds", "bowl"]),         // forest by day
+        Scene(anchors: ["waves"], extras: ["wind", "rain"]),                                    // sea
+        Scene(anchors: ["underwater", "whale"], extras: ["whale", "underwater"]),               // the deep
+        Scene(anchors: ["storm"], extras: ["rain", "wind", "cat", "clock"]),                    // storm outside
+        Scene(anchors: ["train"], extras: ["rain", "heartbeat", "vinyl"]),                      // night train
+        Scene(anchors: ["bowl"], extras: ["river", "wind", "birds"]),                           // meditation
+        Scene(anchors: ["library"], extras: ["clock", "keyboard", "rain"]),                     // library
+        Scene(anchors: ["white"], extras: ["rain", "keyboard"]),                                // focus
+        Scene(anchors: ["cat"], extras: ["vinyl", "rain", "clock", "heartbeat", "campfire"]),   // cozy
     ]
 
     static func randomLevels(avoiding current: Set<String> = []) -> [String: Double] {
@@ -373,7 +373,7 @@ final class MixStore: ObservableObject {
         mixesChanged()
     }
 
-    /// Lets Siri / Spotlight phrases like «Включи <микс> в Murmur» learn about new and deleted mixes.
+    /// Lets Siri / Spotlight phrases like "Play <mix> in Murmur" learn about new and deleted mixes.
     private func mixesChanged() {
         guard !Self.sandboxed else { return }
         MurmurShortcuts.updateAppShortcutParameters()
@@ -386,7 +386,7 @@ final class MixStore: ObservableObject {
     // MARK: Pomodoro
 
     /// Starts (or restarts) Pomodoro with a fresh focus round, `minutes` long or the last length chosen.
-    /// The current mix plays; with nothing chosen, the built-in «Фокус» mix starts. No cue at the start.
+    /// The current mix plays; with nothing chosen, the built-in Focus mix starts. No cue at the start.
     func startPomodoro(minutes: Int? = nil) {
         if let minutes {
             pomodoroPlan = PomodoroPlan(focus: min(max(minutes, PomodoroPlan.allowed.lowerBound), PomodoroPlan.allowed.upperBound))
@@ -408,7 +408,7 @@ final class MixStore: ObservableObject {
         endPomodoro()
     }
 
-    /// Ends the current phase now: «Перерыв сейчас» / «Пропустить перерыв».
+    /// Ends the current phase now: Take a Break Now / Skip Break.
     func skipPomodoroPhase() {
         guard let state = pomodoro else { return }
         enter(state.advanced(at: Date()))

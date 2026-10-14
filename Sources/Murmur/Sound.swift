@@ -15,11 +15,7 @@ enum SoundSource: Hashable {
 }
 
 enum SoundCategory: String, CaseIterable, Identifiable {
-    case water = "Дождь и вода"
-    case nature = "Природа"
-    case city = "Город"
-    case rhythm = "Дом"
-    case noise = "Шум"
+    case water, nature, city, rhythm, noise
 
     var id: String { rawValue }
 }
@@ -69,7 +65,7 @@ struct Sound: Identifiable, Hashable {
     var boost: Float = 1
     /// How the recording is turned into an endless texture (ignored for loops with a `region`).
     var layers: [Layer] = [Layer()]
-    /// «Живой микс»: how far (±dB) the level slowly wanders around the slider over minutes.
+    /// Living Mix: how far (±dB) the level slowly wanders around the slider over minutes.
     /// 0 = steady (the clock's exact rhythm, the heartbeat). See `Drift`.
     var drift: Double = 2
 
@@ -79,7 +75,7 @@ struct Sound: Identifiable, Hashable {
 
 extension Sound {
     static let all: [Sound] = [
-        // Дождь и вода
+        // Rain and water
         Sound(id: "rain", name: L("Дождь", "Rain"), symbol: "cloud.rain", category: .water, tint: Color(hex: 0x4F8EF7), source: .file("rain"), drift: 2.5),
         Sound(id: "storm", name: L("Гроза", "Thunderstorm"), symbol: "cloud.bolt.rain", category: .water, tint: Color(hex: 0x7C6CF2), source: .file("storm"),
               layers: [Layer(length: 6...14, fade: 3, rate: 0.95...1.05),
@@ -92,7 +88,7 @@ extension Sound {
         Sound(id: "underwater", name: L("Под водой", "Underwater"), symbol: "bubbles.and.sparkles", category: .water, tint: Color(hex: 0x2F7FD0), source: .file("underwater"),
               layers: [Layer(length: 8...16, fade: 3, rate: 0.97...1.03)]),
 
-        // Природа
+        // Nature
         Sound(id: "campfire", name: L("Костёр", "Campfire"), symbol: "flame", category: .nature, tint: Color(hex: 0xFF7438), source: .file("campfire"), boost: 1.8,
               layers: [Layer(length: 6...14, rate: 0.97...1.03)]),
         Sound(id: "wind", name: L("Ветер", "Wind"), symbol: "wind.snow", category: .nature, tint: Color(hex: 0x7FA7C4), source: .file("wind"),
@@ -111,7 +107,7 @@ extension Sound {
                        // The ocean itself, so there is never dead silence between songs.
                        Layer(file: "underwater", length: 8...16, fade: 3, rate: 0.97...1.03, gainDB: -9)]),
 
-        // Город и дорога
+        // City and road
         Sound(id: "city", name: L("Улица", "Street"), symbol: "building.2", category: .city, tint: Color(hex: 0xF0A030), source: .file("city"), drift: 2.5),
         Sound(id: "cafe", name: L("Кафе", "Café"), symbol: "cup.and.saucer", category: .city, tint: Color(hex: 0xC27C48), source: .file("cafe"),
               layers: [Layer(length: 8...16, rate: 0.99...1.01)], drift: 2.5),
@@ -119,7 +115,7 @@ extension Sound {
               layers: [Layer(length: 6...12, fade: 2)], drift: 1.5),
         Sound(id: "library", name: L("Библиотека", "Library"), symbol: "books.vertical", category: .city, tint: Color(hex: 0xA6774E), source: .file("library"), drift: 1.5),
 
-        // Ритм
+        // Rhythm
         Sound(id: "keyboard", name: L("Клавиатура", "Keyboard"), symbol: "keyboard", category: .rhythm, tint: Color(hex: 0x8A8AA3), source: .file("keyboard"), defaultVolume: 0.45,
               layers: [Layer(length: 1...3, fade: 0.12, rate: 0.97...1.03, gainJitterDB: 2)], drift: 2.5),
         Sound(id: "clock", name: L("Часы", "Clock"), symbol: "clock", category: .rhythm, tint: Color(hex: 0xB89B62), source: .file("clock"),
@@ -134,7 +130,7 @@ extension Sound {
               // Each strike is a different bowl: new pitch, new side, ringing over the last one.
               layers: [Layer(rate: 0.94...1.06, gainDB: -4, gainJitterDB: 2, pan: 0.5, events: 12...24)], drift: 1),
 
-        // Шум — генерируется в реальном времени и никогда не повторяется
+        // Noise — generated in real time, never repeats
         Sound(id: "white", name: L("Белый шум", "White Noise"), symbol: "waveform", category: .noise, tint: Color(hex: 0x8F9AB3), source: .whiteNoise, defaultVolume: 0.35, drift: 0.75),
     ]
 

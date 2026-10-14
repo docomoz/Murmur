@@ -1,6 +1,6 @@
 import AVFoundation
 
-/// «Живой микс»: shared on/off switch for every channel's level drift.
+/// Living Mix: shared on/off switch for every channel's level drift.
 /// Written on the main thread, read on the audio thread (a single aligned word; a stale read
 /// for one buffer is harmless because every channel glides toward the new state anyway).
 final class DriftSwitch {
@@ -21,7 +21,7 @@ struct Drift {
     static let periods: [ClosedRange<Double>] = [150...300, 80...150, 60...90]
     /// Relative weights (stored inline, not in an array, so the audio thread never retains anything).
     private static let w0 = 1.0, w1 = 0.6, w2 = 0.3
-    /// Seconds for the drift to fade in/out when «Живой микс» is toggled.
+    /// Seconds for the drift to fade in/out when Living Mix is toggled.
     static let toggleTime = 6.0
 
     let depthDB: Double
