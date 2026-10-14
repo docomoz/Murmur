@@ -7,6 +7,19 @@
     <link>https://github.com/docomoz/Murmur</link>
     <language>ru</language>
     <item>
+      <title>Murmur 1.12</title>
+      <pubDate>Wed, 14 Oct 2026 10:51:05 +0000</pubDate>
+      <link>https://github.com/docomoz/Murmur/releases/tag/v1.12</link>
+      <sparkle:version>14</sparkle:version>
+      <sparkle:shortVersionString>1.12</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description sparkle:format="markdown"><![CDATA[- **Помодоро-таймер вместо таймера сна.** Кнопка «Помодоро» внизу панели: фокус 15, 20, 25, 30 или 45 минут под ваш микс, затем перерыв 5 минут (каждый четвёртый — 15).
+- **Перерыв — в тишине.** Когда фокус заканчивается, звучит удар поющей чаши и микс плавно стихает. После перерыва — снова чаша, и тот же микс возвращается.
+- **Пауза останавливает и таймер.** Поставили звук на паузу во время фокуса — отсчёт замер; Play продолжает. Play во время перерыва заканчивает его досрочно.
+- В «Быстрых командах»: «Помодоро-таймер» с выбором минут и «Остановить помодоро».]]></description>
+      <enclosure url="https://github.com/docomoz/Murmur/releases/download/v1.12/Murmur.dmg" length="40198338" type="application/octet-stream" sparkle:edSignature="Ti4UJNfmkgcwgmzXIZobMEQXFTUXY1gYeoWfrcegjnf/WKJ9mxz4xhsz6TT0UFflWVriD9mUCGkDOStH5bncBA=="/>
+    </item>
+    <item>
       <title>Murmur 1.11.1</title>
       <pubDate>Wed, 14 Oct 2026 10:47:18 +0000</pubDate>
       <link>https://github.com/docomoz/Murmur/releases/tag/v1.11.1</link>
