@@ -154,7 +154,7 @@ struct PauseIntent: AppIntent {
 
 struct StopIntent: AppIntent {
     static let title: LocalizedStringResource = "Остановить"
-    static let description = IntentDescription("Выключает все звуки и таймер сна.")
+    static let description = IntentDescription("Выключает все звуки и помодоро-таймер.")
     static let openAppWhenRun = false
 
     @MainActor
@@ -164,33 +164,33 @@ struct StopIntent: AppIntent {
     }
 }
 
-struct SleepTimerIntent: AppIntent {
-    static let title: LocalizedStringResource = "Таймер сна"
-    static let description = IntentDescription("Через заданное время звук плавно стихнет. Если ничего не играет, включится текущий микс.")
+struct StartPomodoroIntent: AppIntent {
+    static let title: LocalizedStringResource = "Помодоро-таймер"
+    static let description = IntentDescription("Запускает помодоро: фокус под текущий микс, затем перерыв в тишине. Если ничего не выбрано, включится микс «Фокус».")
     static let openAppWhenRun = false
 
-    @Parameter(title: "Минуты", default: 30, inclusiveRange: (1, 720))
+    @Parameter(title: "Минуты фокуса", default: 25, inclusiveRange: (1, 180))
     var minutes: Int
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Таймер сна на \(\.$minutes) мин")
+        Summary("Помодоро: фокус \(\.$minutes) мин")
     }
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        try MixStore.forIntents().startTimer(minutes: minutes)
+        try MixStore.forIntents().startPomodoro(minutes: minutes)
         return .result()
     }
 }
 
-struct CancelSleepTimerIntent: AppIntent {
-    static let title: LocalizedStringResource = "Выключить таймер сна"
-    static let description = IntentDescription("Отменяет таймер сна; звук продолжает играть.")
+struct StopPomodoroIntent: AppIntent {
+    static let title: LocalizedStringResource = "Остановить помодоро"
+    static let description = IntentDescription("Останавливает помодоро-таймер; звук остаётся как есть.")
     static let openAppWhenRun = false
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        try MixStore.forIntents().cancelTimer()
+        try MixStore.forIntents().stopPomodoro()
         return .result()
     }
 }
@@ -313,10 +313,10 @@ struct MurmurShortcuts: AppShortcutsProvider {
             systemImageName: "stop.circle"
         )
         AppShortcut(
-            intent: SleepTimerIntent(),
-            phrases: ["Таймер сна в \(.applicationName)", "Включи таймер сна в \(.applicationName)"],
-            shortTitle: "Таймер сна",
-            systemImageName: "moon.zzz"
+            intent: StartPomodoroIntent(),
+            phrases: ["Помодоро в \(.applicationName)", "Запусти помодоро в \(.applicationName)"],
+            shortTitle: "Помодоро",
+            systemImageName: "timer"
         )
     }
 }

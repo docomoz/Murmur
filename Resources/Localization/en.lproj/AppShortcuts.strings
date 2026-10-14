@@ -16,5 +16,5 @@
 "Выключи ${applicationName}" = "Turn off ${applicationName}";
 "Останови ${applicationName}" = "Stop ${applicationName}";
 
-"Таймер сна в ${applicationName}" = "Sleep timer in ${applicationName}";
-"Включи таймер сна в ${applicationName}" = "Start a sleep timer in ${applicationName}";
+"Помодоро в ${applicationName}" = "Pomodoro in ${applicationName}";
+"Запусти помодоро в ${applicationName}" = "Start a Pomodoro in ${applicationName}";

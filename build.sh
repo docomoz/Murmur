@@ -26,12 +26,17 @@ if [ -n "$APPSTORE" ] && [ -n "$DEVELOPER_ID$NOTARY_PROFILE" ]; then
   echo "✗ MURMUR_APPSTORE собирается только с ad-hoc подписью (App Store-подпись ставит build-appstore.sh)" >&2
   exit 1
 fi
+# The DMG window is laid out by Finder, which can't tell two volumes named «Murmur» apart.
+if [ -z "$APPSTORE" ] && [ -d /Volumes/Murmur ]; then
+  echo "✗ Уже смонтирован том «Murmur» (скачанный DMG?) — извлеките его: hdiutil detach /Volumes/Murmur" >&2
+  exit 1
+fi
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/docomoz/Murmur/main/appcast.xml}"
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-$(cat Resources/sparkle-public-key.txt 2>/dev/null || true)}"
 SPARKLE_PUBLIC_KEY="$(printf '%s' "$SPARKLE_PUBLIC_KEY" | tr -d '[:space:]')"
 
-VERSION="1.11.1"
-BUILD_NUMBER="13"   # CFBundleVersion — Sparkle compares it, so raise it with every release
+VERSION="1.12"
+BUILD_NUMBER="14"   # CFBundleVersion — Sparkle compares it, so raise it with every release
 APP="build/Murmur.app"
 
 SWIFT_FLAGS=()

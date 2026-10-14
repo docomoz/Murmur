@@ -109,8 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             iconTimer?.invalidate()
             iconTimer = nil
         }
-        button.image = StatusIcon.image(phase: iconPhase, playing: playing, badge: store.pomodoro?.phase.symbol, hushed: hushed)
-        if let label = store.pomodoroLabel ?? store.timerLabel {
+        let badge = store.pomodoro.map { $0.isPaused ? "pause" : $0.phase.symbol }
+        button.image = StatusIcon.image(phase: iconPhase, playing: playing, badge: badge, hushed: hushed)
+        if let label = store.pomodoroLabel {
             button.attributedTitle = NSAttributedString(string: " " + label, attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular),
             ])
@@ -467,7 +468,7 @@ enum SelfTest {
         }
         let actions = (root["actions"] as? [String: Any] ?? [:]).keys.sorted()
         let expected = ["PlayMixIntent", "ShuffleIntent", "TogglePlaybackIntent", "PlayIntent", "PauseIntent", "StopIntent",
-                        "SleepTimerIntent", "CancelSleepTimerIntent", "SetVolumeIntent", "MurmurFocusFilter"]
+                        "StartPomodoroIntent", "StopPomodoroIntent", "SetVolumeIntent", "MurmurFocusFilter"]
         let missing = expected.filter { !actions.contains($0) }
         let shortcuts = (root["autoShortcuts"] as? [Any])?.count ?? 0
         let entities = (root["entities"] as? [String: Any] ?? [:]).keys.sorted()
@@ -605,8 +606,8 @@ enum SelfTest {
         }
     }
 
-    /// Pomodoro state machine: phase order, long breaks, timing math, and that the user's own mix
-    /// comes back exactly after a break.
+    /// Pomodoro state machine: phase order, long breaks, timing math, pausing, and how it drives the mix:
+    /// silence in breaks, the same mix back after, the user's play/pause steering the countdown.
     @MainActor
     private static func checkPomodoro() -> Bool {
         var failures: [String] = []
@@ -618,9 +619,9 @@ enum SelfTest {
         expect(order == cycle + cycle, "phase order \(order)")
         expect(plan.duration(of: .focus) == 25 * 60 && plan.duration(of: .shortBreak) == 5 * 60
                && plan.duration(of: .longBreak) == 15 * 60, "25/5/15 durations")
-        for p in PomodoroPlan.presets {
-            expect(p.longBreak > p.shortBreak && p.focus > p.longBreak, "plan \(p.id) proportions")
-        }
+        expect(PomodoroPlan.presets.map(\.focus) == [15, 20, 25, 30, 45], "menu lengths")
+        expect(PomodoroPlan.byID("20").focus == 20 && PomodoroPlan.byID("junk") == .standard
+               && PomodoroPlan.byID("0") == .standard, "saved length")
 
         // On time: each phase starts exactly where the last one ended; one full set = 130 min.
         let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
@@ -645,10 +646,18 @@ enum SelfTest {
         let early = state.end - 600
         expect(state.advanced(at: early).end == early + 5 * 60, "skip")
 
+        // Paused focus: the countdown stands still, then continues from the same point.
+        let p0 = state.end - 600
+        let paused = state.paused(at: p0)
+        expect(paused.isPaused && paused.remaining(at: p0 + 3600) == 600, "paused countdown stands still")
+        let resumed = paused.resumed(at: p0 + 3600)
+        expect(!resumed.isPaused && resumed.end == p0 + 3600 + 600, "resumed countdown")
+        expect(!paused.advanced(at: p0).isPaused, "next phase is never paused")
+
         expect(countdownLabel(25 * 60) == "25:00" && countdownLabel(59.2) == "1:00"
                && countdownLabel(0.4) == "0:01" && countdownLabel(5400) == "1:30:00", "countdown labels")
 
-        // The mix swap: break mix in, the user's exact mix (sounds + levels) back after.
+        // The store: a break silences the mix (keeping it), the same mix comes back for focus.
         MixStore.sandboxed = true
         let store = MixStore()
         store.cuesEnabled = false
@@ -656,23 +665,37 @@ enum SelfTest {
         store.apply(Mix(id: "t", name: "", emoji: "", levels: ["rain": 0.42, "wind": 0.33, "cafe": 0.5]))
         let ownActive = store.active
         let ownVolumes = store.volumes
-        store.setBreakMix("b.sea")
-        store.startPomodoro(plan)
-        expect(store.pomodoro?.phase == .focus && store.pomodoroRemaining != nil, "store starts in focus")
+        store.startPomodoro(minutes: 20)
+        expect(store.pomodoro?.phase == .focus && store.pomodoro?.plan.focus == 20 && store.isPlaying
+               && store.pomodoroRemaining != nil, "starts in focus with the mix playing")
         store.skipPomodoroPhase()
-        expect(store.pomodoro?.phase == .shortBreak, "store break")
-        expect(Set(store.active) == ["waves", "wind"] && store.volumes["wind"] == 0.2, "break mix playing: \(store.active)")
+        expect(store.pomodoro?.phase == .shortBreak && !store.isPlaying && store.active == ownActive, "break is quiet, mix kept")
         store.skipPomodoroPhase()
-        expect(store.active == ownActive && store.volumes == ownVolumes, "focus mix restored")
+        expect(store.pomodoro?.phase == .focus && store.isPlaying && store.active == ownActive
+               && store.volumes == ownVolumes, "focus brings the same mix back")
+
+        // The user's pause freezes focus, play resumes it.
+        store.togglePlay()
+        expect(store.pomodoro?.isPaused == true && !store.isPlaying, "pause freezes focus")
+        store.togglePlay()
+        expect(store.pomodoro?.isPaused == false && store.isPlaying && store.pomodoro?.phase == .focus, "play resumes focus")
+
+        // Play during a break ends it early.
         store.skipPomodoroPhase()
-        store.setBreakMix(MixStore.silence)
-        expect(store.active.isEmpty, "silent break")
-        store.startTimer(minutes: 15)   // the sleep timer takes over and brings the mix back
-        expect(store.pomodoro == nil && store.timerRemaining != nil && store.active == ownActive,
-               "sleep timer replaces Pomodoro")
-        store.startPomodoro()
-        expect(store.timerRemaining == nil && store.pomodoro != nil, "Pomodoro replaces sleep timer")
+        expect(store.pomodoro?.phase == .shortBreak && !store.isPlaying, "second break")
+        store.togglePlay()
+        expect(store.pomodoro?.phase == .focus && store.isPlaying, "play ends the break")
+
+        // Stopping leaves the sound alone; starting with nothing chosen plays «Фокус».
+        store.stopPomodoro()
+        expect(store.pomodoro == nil && store.isPlaying, "stop keeps the sound")
         store.stopAll()
+        store.startPomodoro()
+        expect(store.isPlaying && Set(store.active) == Set(Mix.presets.first { $0.id == "b.focus" }!.levels.keys),
+               "empty start plays the Focus mix")
+        expect(store.pomodoro?.plan.focus == 20, "last length remembered")
+        store.stopAll()
+        expect(store.pomodoro == nil, "stop all ends Pomodoro")
 
         print("\nПомодоро: " + (failures.isEmpty ? "OK" : "FAIL"))
         failures.forEach { print("  ✗ " + $0) }
@@ -787,7 +810,7 @@ enum SelfTest {
         let bar = ImageRenderer(content: VStack(spacing: 0) {
             ForEach([(Color(white: 0.92), Color.black), (Color(white: 0.16), Color.white)], id: \.1) { colors in
                 HStack(spacing: 14) {
-                    ForEach([(nil, "29:59"), ("scope", "24:13"), ("cup.and.saucer", "4:59")], id: \.1) { item in
+                    ForEach([("scope", "24:13"), ("pause", "18:40"), ("cup.and.saucer", "4:59")], id: \.1) { item in
                         HStack(spacing: 4) {
                             Image(nsImage: StatusIcon.image(phase: 0.4, playing: true, badge: item.0)).renderingMode(.template)
                             Text(item.1).font(.system(size: NSFont.systemFontSize).monospacedDigit()).fixedSize()
@@ -806,9 +829,9 @@ enum SelfTest {
                 .write(to: URL(fileURLWithPath: "\(prefix)-menubar.png"))
         }
 
-        // Pomodoro: the footer pill in focus, then in a break (the break mix is in the list).
+        // Pomodoro: the footer pill in focus, then in a quiet break.
         store.cuesEnabled = false
-        store.startPomodoro(.standard)
+        store.startPomodoro(minutes: PomodoroPlan.standard.focus)
         renderPanel("-pomodoro", schemes: [.light])
         store.skipPomodoroPhase()
         renderPanel("-pomodoro-break", schemes: [.dark])

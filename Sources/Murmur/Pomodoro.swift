@@ -1,27 +1,28 @@
 import Foundation
 
-/// One Pomodoro rhythm: focus, a short break, and a long break after every `longEvery` focus rounds.
+/// One Pomodoro rhythm: focus of the chosen length, a 5-minute break, and a 15-minute one after every
+/// `longEvery` focus rounds. Breaks are the same for every focus length.
 struct PomodoroPlan: Hashable, Identifiable {
-    let id: String
     /// Minutes.
     let focus: Int
-    let shortBreak: Int
-    let longBreak: Int
 
+    static let shortBreak = 5
+    static let longBreak = 15
     /// Every 4th break is a long one.
     static let longEvery = 4
 
-    static let presets: [PomodoroPlan] = [
-        PomodoroPlan(id: "25", focus: 25, shortBreak: 5, longBreak: 15),
-        PomodoroPlan(id: "50", focus: 50, shortBreak: 10, longBreak: 30),
-        PomodoroPlan(id: "90", focus: 90, shortBreak: 20, longBreak: 30),
-    ]
-    static let standard = presets[0]
-    static func byID(_ id: String?) -> PomodoroPlan { presets.first { $0.id == id } ?? standard }
+    /// Focus lengths offered in the menu; Shortcuts may ask for any length in `allowed`.
+    static let presets = [15, 20, 25, 30, 45].map(PomodoroPlan.init(focus:))
+    static let standard = PomodoroPlan(focus: 25)
+    static let allowed = 1...180
 
-    var title: String {
-        L("Фокус \(focus) · перерыв \(shortBreak) мин", "Focus \(focus) · break \(shortBreak) min")
+    var id: String { String(focus) }
+    static func byID(_ id: String?) -> PomodoroPlan {
+        guard let minutes = id.flatMap(Int.init), allowed.contains(minutes) else { return standard }
+        return PomodoroPlan(focus: minutes)
     }
+
+    var title: String { L("Фокус \(focus) мин", "Focus \(focus) min") }
 
     /// Phases run focus, break, focus, break… — even indices are focus, odd ones are breaks,
     /// and break number `longEvery`, `2 × longEvery`, … is long.
@@ -33,8 +34,8 @@ struct PomodoroPlan: Hashable, Identifiable {
     func duration(of phase: PomodoroPhase) -> TimeInterval {
         let minutes = switch phase {
         case .focus: focus
-        case .shortBreak: shortBreak
-        case .longBreak: longBreak
+        case .shortBreak: Self.shortBreak
+        case .longBreak: Self.longBreak
         }
         return TimeInterval(minutes * 60)
     }
@@ -66,6 +67,8 @@ struct PomodoroState: Equatable {
     /// 0 = first focus, 1 = first break, …
     private(set) var index: Int
     private(set) var end: Date
+    /// Time left when the user paused the mix during focus; the countdown stands still meanwhile.
+    private(set) var pausedLeft: TimeInterval?
 
     /// A phase that ended up to this late (timer jitter, a busy main thread) still hands its exact
     /// end time to the next one; later than that (the Mac slept) the next phase starts now.
@@ -81,20 +84,39 @@ struct PomodoroState: Equatable {
     /// Focus round within the current set of `longEvery`, 1-based.
     var round: Int { index / 2 % PomodoroPlan.longEvery + 1 }
 
-    func remaining(at now: Date) -> TimeInterval { max(end.timeIntervalSince(now), 0) }
+    var isPaused: Bool { pausedLeft != nil }
+
+    func remaining(at now: Date) -> TimeInterval { pausedLeft ?? max(end.timeIntervalSince(now), 0) }
+
+    /// Freezes the countdown at what's left now.
+    func paused(at now: Date) -> PomodoroState {
+        var next = self
+        next.pausedLeft = remaining(at: now)
+        return next
+    }
+
+    /// Continues the countdown from where it was frozen.
+    func resumed(at now: Date) -> PomodoroState {
+        guard let left = pausedLeft else { return self }
+        var next = self
+        next.pausedLeft = nil
+        next.end = now.addingTimeInterval(left)
+        return next
+    }
 
     /// The next phase, begun at the old phase's end — or now, if that was long ago (sleep) or
     /// hasn't come yet (the phase is skipped).
     func advanced(at now: Date) -> PomodoroState {
         var next = self
         next.index += 1
+        next.pausedLeft = nil
         let start = (0...Self.catchUp).contains(now.timeIntervalSince(end)) ? end : now
         next.end = start.addingTimeInterval(plan.duration(of: next.phase))
         return next
     }
 }
 
-/// `m:ss` below an hour, `h:mm:ss` above — shared by the sleep timer and Pomodoro.
+/// `m:ss` below an hour, `h:mm:ss` above.
 func countdownLabel(_ seconds: TimeInterval) -> String {
     let s = Int(seconds.rounded(.up))
     return s >= 3600

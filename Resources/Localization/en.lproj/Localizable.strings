@@ -29,15 +29,16 @@
 
 /* Stop */
 "Остановить" = "Stop";
-"Выключает все звуки и таймер сна." = "Turns off all sounds and the sleep timer.";
+"Выключает все звуки и помодоро-таймер." = "Turns off all sounds and the Pomodoro timer.";
 
-/* Sleep timer */
-"Таймер сна" = "Sleep Timer";
-"Через заданное время звук плавно стихнет. Если ничего не играет, включится текущий микс." = "The sound fades out after the given time. If nothing is playing, the current mix starts.";
-"Минуты" = "Minutes";
-"Таймер сна на ${minutes} мин" = "Sleep timer for ${minutes} min";
-"Выключить таймер сна" = "Cancel Sleep Timer";
-"Отменяет таймер сна; звук продолжает играть." = "Cancels the sleep timer; the sound keeps playing.";
+/* Pomodoro */
+"Помодоро-таймер" = "Pomodoro Timer";
+"Помодоро" = "Pomodoro";
+"Запускает помодоро: фокус под текущий микс, затем перерыв в тишине. Если ничего не выбрано, включится микс «Фокус»." = "Starts a Pomodoro: focus with the current mix, then a quiet break. If nothing is selected, the Focus mix starts.";
+"Минуты фокуса" = "Focus Minutes";
+"Помодоро: фокус ${minutes} мин" = "Pomodoro: ${minutes} min focus";
+"Остановить помодоро" = "Stop Pomodoro";
+"Останавливает помодоро-таймер; звук остаётся как есть." = "Stops the Pomodoro timer; the sound stays as it is.";
 
 /* Volume */
 "Громкость Murmur" = "Murmur Volume";
