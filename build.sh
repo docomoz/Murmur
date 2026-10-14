@@ -30,8 +30,8 @@ SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/docomoz/
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-$(cat Resources/sparkle-public-key.txt 2>/dev/null || true)}"
 SPARKLE_PUBLIC_KEY="$(printf '%s' "$SPARKLE_PUBLIC_KEY" | tr -d '[:space:]')"
 
-VERSION="1.11"
-BUILD_NUMBER="12"   # CFBundleVersion — Sparkle compares it, so raise it with every release
+VERSION="1.11.1"
+BUILD_NUMBER="13"   # CFBundleVersion — Sparkle compares it, so raise it with every release
 APP="build/Murmur.app"
 
 SWIFT_FLAGS=()

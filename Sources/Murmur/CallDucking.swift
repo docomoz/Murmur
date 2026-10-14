@@ -17,38 +17,54 @@ import Foundation
 final class MicMonitor {
     private(set) var inUse = false
     private let onChange: (Bool) -> Void
-    private var watched: [(AudioObjectID, AudioObjectPropertyAddress)] = []
-    private var listener: AudioObjectPropertyListenerBlock?
-    private var recheck: DispatchWorkItem?
+    /// HAL objects carrying our listener, and for which properties.
+    private var watched: [AudioObjectID: [AudioObjectPropertySelector]] = [:]
+    private var relay: Relay?
+    private var check: DispatchWorkItem?
+    private var settle: DispatchWorkItem?
+    private var needsRelist = false
+    /// `--selftest`: listener calls received so far.
+    private(set) var callbacks = 0
 
     init(onChange: @escaping (Bool) -> Void) {
         self.onChange = onChange
     }
 
-    deinit { unwatchAll() }
+    deinit { detach() }
 
-    var isRunning: Bool { listener != nil }
+    var isRunning: Bool { relay != nil }
 
     func start() {
-        guard listener == nil else { return }
-        listener = { [weak self] count, addresses in
-            // Only a new or vanished process/device needs fresh listeners; flag flips just re-check.
-            let lists: Set<AudioObjectPropertySelector> = [kAudioHardwarePropertyProcessObjectList, kAudioHardwarePropertyDevices]
-            let relist = (0..<Int(count)).contains { lists.contains(addresses[$0].mSelector) }
-            self?.changed(relist: relist)
-        }
-        rewatch()
+        guard relay == nil else { return }
+        relay = Relay(self)
+        watch(AudioObjectID(kAudioObjectSystemObject), [
+            kAudioHardwarePropertyProcessObjectList, kAudioHardwarePropertyDevices, kAudioHardwarePropertyDefaultInputDevice,
+        ])
+        relist()
         refresh()
     }
 
     func stop() {
-        recheck?.cancel()
-        unwatchAll()
-        listener = nil
+        detach()
         if inUse {
             inUse = false
             onChange(false)
         }
+    }
+
+    private func detach() {
+        check?.cancel()
+        settle?.cancel()
+        check = nil
+        settle = nil
+        needsRelist = false
+        guard let relay else { return }
+        for (object, selectors) in watched { Self.unwatch(object, selectors, relay) }
+        watched = [:]
+        relay.monitor = nil
+        self.relay = nil
+        // A HAL thread may be inside `listen` with this relay right now; let it finish first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { withExtendedLifetime(relay) {} }
     }
 
     // MARK: State
@@ -83,54 +99,140 @@ final class MicMonitor {
         onChange(now)
     }
 
-    /// Something moved: re-check now and once more a moment later, in case the device and process
-    /// flags don't update in the same instant.
-    private func changed(relist: Bool) {
-        if relist { rewatch() }
-        refresh()
-        recheck?.cancel()
+    /// Something moved. One sound anywhere arrives as a burst of notifications (a process appears,
+    /// starts output, its device starts…), and each check walks every audio process over IPC, so
+    /// a burst is checked once, a moment later — and once more after it has died down, in case
+    /// the device and process flags don't update in the same instant.
+    fileprivate func changed(relist: Bool) {
+        callbacks += 1
+        needsRelist = needsRelist || relist
+        if check == nil {
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.check = nil
+                if self.needsRelist {
+                    self.needsRelist = false
+                    self.relist()
+                }
+                self.refresh()
+            }
+            check = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        }
+        settle?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.refresh() }
-        recheck = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        settle = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
     // MARK: Listeners
 
-    /// (Re)attaches listeners: the lists of processes and devices on the system object, input and
-    /// output state on every other process, running state on every input-capable device.
-    private func rewatch() {
-        guard let listener else { return }
-        unwatchAll()
+    /// Brings the listeners in line with the processes and devices there are now: input and output
+    /// state on every other process, running state on every input-capable device. Newcomers get a
+    /// listener, the vanished lose theirs, everyone else keeps the one they have.
+    private func relist() {
         let system = AudioObjectID(kAudioObjectSystemObject)
-        watch(system, kAudioHardwarePropertyProcessObjectList, listener)
-        watch(system, kAudioHardwarePropertyDevices, listener)
-        watch(system, kAudioHardwarePropertyDefaultInputDevice, listener)
         let me = getpid()
-        // Murmur's own play/pause isn't news.
-        for process in Self.processes() where Self.pid(of: process) != me {
-            watch(process, kAudioProcessPropertyIsRunningInput, listener)
-            watch(process, kAudioProcessPropertyIsRunningOutput, listener)
+        var wanted: [AudioObjectID: [AudioObjectPropertySelector]] = [:]
+        for process in Self.processes() {
+            if let selectors = watched[process] {
+                wanted[process] = selectors
+            } else if Self.pid(of: process) != me { // Murmur's own play/pause isn't news.
+                wanted[process] = [kAudioProcessPropertyIsRunningInput, kAudioProcessPropertyIsRunningOutput]
+            }
         }
-        for device in Self.ids(system, kAudioHardwarePropertyDevices) where Self.hasInput(device) {
-            watch(device, kAudioDevicePropertyDeviceIsRunningSomewhere, listener)
+        for device in Self.ids(system, kAudioHardwarePropertyDevices) {
+            if let selectors = watched[device] {
+                wanted[device] = selectors
+            } else if Self.hasInput(device) {
+                wanted[device] = [kAudioDevicePropertyDeviceIsRunningSomewhere]
+            }
+        }
+        if let relay {
+            for (object, selectors) in watched where object != system && wanted[object] == nil {
+                Self.unwatch(object, selectors, relay)
+                watched[object] = nil
+            }
+        }
+        for (object, selectors) in wanted where watched[object] == nil {
+            watch(object, selectors)
         }
     }
 
-    private func watch(_ object: AudioObjectID, _ selector: AudioObjectPropertySelector, _ block: @escaping AudioObjectPropertyListenerBlock) {
-        var address = Self.address(selector)
-        if AudioObjectAddPropertyListenerBlock(object, &address, DispatchQueue.main, block) == noErr {
-            watched.append((object, address))
+    private func watch(_ object: AudioObjectID, _ selectors: [AudioObjectPropertySelector]) {
+        guard let relay else { return }
+        let context = Unmanaged.passUnretained(relay).toOpaque()
+        let added = selectors.filter { selector in
+            var address = Self.address(selector)
+            return AudioObjectAddPropertyListener(object, &address, Self.listen, context) == noErr
         }
+        if !added.isEmpty { watched[object] = added }
     }
 
-    private func unwatchAll() {
-        guard let listener else { return }
-        for (object, address) in watched {
-            var address = address
+    private static func unwatch(_ object: AudioObjectID, _ selectors: [AudioObjectPropertySelector], _ relay: Relay) {
+        let context = Unmanaged.passUnretained(relay).toOpaque()
+        for selector in selectors {
+            var address = address(selector)
             // Fails harmlessly for processes and devices that are already gone.
-            AudioObjectRemovePropertyListenerBlock(object, &address, DispatchQueue.main, listener)
+            AudioObjectRemovePropertyListener(object, &address, listen, context)
         }
-        watched = []
+    }
+
+    /// Runs on a HAL thread. Listeners go through the C API on purpose: it adds and removes them
+    /// by (function, context), while `AudioObjectRemovePropertyListenerBlock` called from Swift
+    /// silently removes nothing (and still returns noErr) — every re-subscription used to stack
+    /// another copy of each listener, and each copy re-scanned all audio processes on every sound.
+    private static let listen: AudioObjectPropertyListenerProc = { _, count, addresses, context in
+        guard let context else { return noErr }
+        let relay = Unmanaged<Relay>.fromOpaque(context).takeUnretainedValue()
+        // Only a new or vanished process/device needs fresh listeners; flag flips just re-check.
+        let relist = (0..<Int(count)).contains {
+            let selector = addresses[$0].mSelector
+            return selector == kAudioHardwarePropertyProcessObjectList || selector == kAudioHardwarePropertyDevices
+        }
+        DispatchQueue.main.async { relay.monitor?.changed(relist: relist) }
+        return noErr
+    }
+
+    /// The listeners' context: lets a late HAL callback find out the monitor is gone.
+    private final class Relay {
+        weak var monitor: MicMonitor?
+        init(_ monitor: MicMonitor) { self.monitor = monitor }
+    }
+
+    /// `--selftest`: switches the monitor off and on many times, then lets another process play a
+    /// silent sound. Listeners must not pile up (one copy each → a handful of calls, not hundreds),
+    /// and none may survive `stop()`. Returns failures (empty = all good).
+    static func selfCheckListeners() -> (calls: Int, failures: [String]) {
+        let player = URL(fileURLWithPath: "/usr/bin/afplay")
+        let sound = "/System/Library/Sounds/Tink.aiff"
+        guard FileManager.default.isExecutableFile(atPath: player.path) else { return (0, []) }
+        func soundElsewhere(then wait: Double) {
+            let p = Process()
+            p.executableURL = player
+            p.arguments = ["-v", "0", sound]
+            try? p.run()
+            p.waitUntilExit()
+            RunLoop.main.run(until: Date().addingTimeInterval(wait))
+        }
+        var failures: [String] = []
+        let monitor = MicMonitor { _ in }
+        for _ in 0..<20 {
+            monitor.start()
+            monitor.stop()
+        }
+        monitor.start()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+        let before = monitor.callbacks
+        soundElsewhere(then: 1.5)
+        let calls = monitor.callbacks - before
+        if calls == 0 { failures.append("no listener call for a sound elsewhere") }
+        if calls > 12 { failures.append("\(calls) listener calls for one sound elsewhere — listeners pile up") }
+        monitor.stop()
+        let after = monitor.callbacks
+        soundElsewhere(then: 1.5)
+        if monitor.callbacks != after { failures.append("listeners outlive stop()") }
+        return (calls, failures)
     }
 
     // MARK: HAL helpers
