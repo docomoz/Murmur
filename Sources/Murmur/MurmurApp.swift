@@ -451,20 +451,20 @@ enum SelfTest {
             let levels = MainActor.assumeIsolated { MixStore.randomLevels() }
             print("  " + levels.sorted { $0.value > $1.value }.compactMap { Sound.byID[$0.key]?.name }.joined(separator: " + "))
         }
-        reportIntents()
+        if !reportIntents() { failed = true }
         reportChime()
         if !checkPomodoro() { failed = true }
     }
 
     /// Checks the App Intents metadata that build.sh puts into the bundle: every intent is there,
-    /// and every text the system shows has an English translation in en.lproj.
-    private static func reportIntents() {
+    /// and every text the system shows has a Russian translation in ru.lproj. Returns false on failure.
+    private static func reportIntents() -> Bool {
         print("\nApp Intents:")
         let resources = Bundle.main.resourceURL!
         guard let data = try? Data(contentsOf: resources.appendingPathComponent("Metadata.appintents/extract.actionsdata")),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             print("  FAIL no Metadata.appintents in the bundle (run from build/Murmur.app, built by build.sh)")
-            return
+            return false
         }
         let actions = (root["actions"] as? [String: Any] ?? [:]).keys.sorted()
         let expected = ["PlayMixIntent", "ShuffleIntent", "TogglePlaybackIntent", "PlayIntent", "PauseIntent", "StopIntent",
@@ -473,7 +473,8 @@ enum SelfTest {
         let shortcuts = (root["autoShortcuts"] as? [Any])?.count ?? 0
         let entities = (root["entities"] as? [String: Any] ?? [:]).keys.sorted()
         print("  actions \(actions.count), App Shortcuts \(shortcuts), entities \(entities.joined(separator: ", "))")
-        if !missing.isEmpty { print("  FAIL missing actions: \(missing.joined(separator: ", "))") }
+        var ok = missing.isEmpty
+        if !ok { print("  FAIL missing actions: \(missing.joined(separator: ", "))") }
 
         // Every key the system will look up, split by table: phrases → AppShortcuts, the rest → Localizable.
         var keys: (texts: Set<String>, phrases: Set<String>) = ([], [])
@@ -492,14 +493,16 @@ enum SelfTest {
         }
         walk(root, phrase: false)
         for (table, wanted) in [("Localizable", keys.texts), ("AppShortcuts", keys.phrases)] {
-            let url = resources.appendingPathComponent("en.lproj/\(table).strings")
-            let english = NSDictionary(contentsOf: url) as? [String: String] ?? [:]
-            let untranslated = wanted.filter { english[$0] == nil }.sorted()
-            print("  en.lproj/\(table).strings: \(wanted.count - untranslated.count)/\(wanted.count) translated")
-            for key in untranslated { print("  FAIL no English for \"\(key)\"") }
+            let url = resources.appendingPathComponent("ru.lproj/\(table).strings")
+            let russian = NSDictionary(contentsOf: url) as? [String: String] ?? [:]
+            let untranslated = wanted.filter { russian[$0] == nil }.sorted()
+            print("  ru.lproj/\(table).strings: \(wanted.count - untranslated.count)/\(wanted.count) translated")
+            for key in untranslated { print("  FAIL no Russian for \"\(key)\"") }
+            if !untranslated.isEmpty || wanted.isEmpty { ok = false }
         }
         let mixes = MainActor.assumeIsolated { MixStore.mixesForIntents.count }
         print("  mixes offered to Shortcuts: \(mixes)")
+        return ok
     }
 
     /// Living Mix: every sound's drift stays within ±`drift` dB, moves slowly (no faster than

@@ -64,7 +64,7 @@ lipo -create build/bin/Murmur-arm64 build/bin/Murmur-x86_64 -output "$APP/Conten
 rm -rf build/bin
 cp -R Resources/Sounds "$APP/Contents/Resources/Sounds"
 cp CREDITS.md "$APP/Contents/Resources/"
-# en/ru localizations: English for the App Intents texts (the UI itself is translated in code)
+# en/ru localizations: Russian for the App Intents texts (the UI itself is translated in code)
 cp -R Resources/Localization/*.lproj "$APP/Contents/Resources/"
 
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
@@ -153,14 +153,14 @@ xcrun appintentsmetadataprocessor \
   --compile-time-extraction \
   --deployment-aware-processing > build/intents/metadata.log 2>&1 \
   || { cat build/intents/metadata.log >&2; exit 1; }
-# Siri / Spotlight phrase models for every .lproj (ru from the source literals, en from AppShortcuts.strings)
+# Siri / Spotlight phrase models for every .lproj (en from the source literals, ru from AppShortcuts.strings)
 xcrun appintentsnltrainingprocessor \
   --infoplist-path "$APP/Contents/Info.plist" \
   --temp-dir-path build/intents/ssu \
   --bundle-id app.murmur.mac \
   --product-path "$APP/Contents/Resources" \
   --extracted-metadata-path "$APP/Contents/Resources/Metadata.appintents" \
-  --source-file Resources/Localization/en.lproj/AppShortcuts.strings \
+  --source-file Resources/Localization/ru.lproj/AppShortcuts.strings \
   --archive-ssu-assets > build/intents/training.log 2>&1 \
   || { cat build/intents/training.log >&2; exit 1; }
 [ -s "$APP/Contents/Resources/Metadata.appintents/extract.actionsdata" ] || { echo "✗ No Metadata.appintents" >&2; exit 1; }

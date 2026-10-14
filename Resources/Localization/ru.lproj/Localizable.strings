@@ -1,4 +1,53 @@
-/* Russian is the language of the source literals in Sources/Murmur/Intents.swift, so nothing
-   needs translating here. The file exists so the bundle lists Russian as a localization:
-   with CFBundleDevelopmentRegion = en, a Russian Mac picks ru.lproj, any other language en.lproj —
-   the same rule as L("…", "…") in the UI. */
+/* Russian for the App Intents (Shortcuts, Spotlight, Siri, Focus filter).
+   Keys are the English literals in Sources/Murmur/Intents.swift. The rest of the UI
+   is translated in code with L("…", "…") and doesn't use this file. */
+
+/* Mix entity */
+"Mix" = "Микс";
+
+/* Errors */
+"Murmur hasn't started yet, please try again." = "Murmur ещё не запустился, попробуйте ещё раз.";
+"This mix no longer exists." = "Такого микса больше нет.";
+
+/* Play a mix */
+"Play Mix" = "Включить микс";
+"Plays a built-in or saved Murmur mix." = "Включает готовый или сохранённый микс Murmur.";
+"Which mix?" = "Какой микс включить?";
+"Play mix ${mix}" = "Включить микс ${mix}";
+
+/* Shuffle */
+"Shuffle" = "Наугад";
+"Plays a random but believable mix: one main sound plus one or two that belong with it." = "Включает случайный, но правдоподобный микс: главный звук и один-два подходящих к нему.";
+
+/* Play / pause */
+"Play / Pause" = "Пауза / Играть";
+"Pauses or resumes the sound. If nothing is selected, plays a random mix." = "Ставит звук на паузу или продолжает играть. Если ничего не выбрано, включает микс наугад.";
+"Play" = "Играть";
+"Resumes the current mix. If nothing is selected, plays a random mix." = "Продолжает играть текущий микс. Если ничего не выбрано, включает микс наугад.";
+"Pause" = "Пауза";
+"Pauses the sound and keeps the mix." = "Ставит звук на паузу; микс сохраняется.";
+
+/* Stop */
+"Stop" = "Остановить";
+"Turns off all sounds and the Pomodoro timer." = "Выключает все звуки и помодоро-таймер.";
+
+/* Pomodoro */
+"Pomodoro Timer" = "Помодоро-таймер";
+"Pomodoro" = "Помодоро";
+"Starts a Pomodoro: focus with the current mix, then a quiet break. If nothing is selected, the Focus mix starts." = "Запускает помодоро: фокус под текущий микс, затем перерыв в тишине. Если ничего не выбрано, включится микс «Фокус».";
+"Focus Minutes" = "Минуты фокуса";
+"Pomodoro: ${minutes} min focus" = "Помодоро: фокус ${minutes} мин";
+"Stop Pomodoro" = "Остановить помодоро";
+"Stops the Pomodoro timer; the sound stays as it is." = "Останавливает помодоро-таймер; звук остаётся как есть.";
+
+/* Volume */
+"Murmur Volume" = "Громкость Murmur";
+"Sets Murmur's overall volume." = "Устанавливает общую громкость Murmur.";
+"Volume" = "Громкость";
+"Murmur volume: ${percent}" = "Громкость Murmur: ${percent}";
+
+/* Focus filter */
+"Murmur Mix" = "Микс Murmur";
+"Plays a mix when the Focus turns on." = "Включает микс, когда включается режим фокусирования.";
+"Pause when the Focus ends" = "Пауза, когда режим выключится";
+"No mix" = "Без микса";

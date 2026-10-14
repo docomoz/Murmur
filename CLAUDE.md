@@ -8,7 +8,7 @@ Key rules:
 - After replacing the binary inside `build/Murmur.app`, re-sign: `codesign --force --deep -s - build/Murmur.app`.
 - Never bundle third-party sounds or artwork from other apps; audio comes only from Moodist (Pixabay License / CC0) or is synthesized in code.
 - Mac App Store build: `./build-appstore.sh` (sandboxed, bundle ID `com.docomoz.murmur`); submission guide and store texts live in `AppStore/`.
-- The repo is English-only: docs, code comments, script output, commit messages and release notes. Russian appears only as product localization (`L()` strings, App Intents literals, the Russian App Store page, `notes.ru.md` release notes).
+- The repo is English-only: docs, code comments, script output, commit messages and release notes. Russian appears only as product localization (`L()` strings, `Resources/Localization/ru.lproj` for App Intents, the Russian App Store page, `notes.ru.md` release notes).
 - UI is Russian or English, chosen by the first system language: wrap every user-visible string as `L("по-русски", "In English")` (helper in `Sound.swift`).
 - Sounds are never plain loops: recordings play as granular textures (`Texture.swift`, `Sound.layers`); only the clock uses an exact loop.
 - `--snapshot` can't render Liquid Glass; `SelfTest.isRendering` swaps glass for a material so layout can still be checked.

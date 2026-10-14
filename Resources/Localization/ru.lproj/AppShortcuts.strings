@@ -1,0 +1,20 @@
+/* Russian App Shortcut phrases (Siri / Spotlight). Keys are the English phrases from
+   MurmurShortcuts in Sources/Murmur/Intents.swift; every phrase needs ${applicationName}. */
+
+"Play ${mix} in ${applicationName}" = "Включи ${mix} в ${applicationName}";
+"Play a mix in ${applicationName}" = "Включи микс в ${applicationName}";
+
+"Shuffle ${applicationName}" = "${applicationName} наугад";
+"Play something in ${applicationName}" = "Включи что-нибудь в ${applicationName}";
+
+"Pause ${applicationName}" = "Пауза в ${applicationName}";
+"Pause sounds in ${applicationName}" = "Поставь ${applicationName} на паузу";
+
+"Resume ${applicationName}" = "Продолжи ${applicationName}";
+"Play ${applicationName}" = "Играй в ${applicationName}";
+
+"Turn off ${applicationName}" = "Выключи ${applicationName}";
+"Stop ${applicationName}" = "Останови ${applicationName}";
+
+"Pomodoro in ${applicationName}" = "Помодоро в ${applicationName}";
+"Start a Pomodoro in ${applicationName}" = "Запусти помодоро в ${applicationName}";

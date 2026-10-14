@@ -6,7 +6,7 @@ import AppKit
 // Everything that ends up in `Metadata.appintents` (titles, descriptions, parameter titles,
 // App Shortcut phrases) must be a plain string literal: build.sh extracts it at compile time
 // (`-emit-const-values` + `appintentsmetadataprocessor`), so the `L(…)` helper can't be used here.
-// The literals are the Russian text; English comes from Resources/Localization/en.lproj
+// The literals are the English text; Russian comes from Resources/Localization/ru.lproj
 // (`Localizable.strings` for titles, `AppShortcuts.strings` for phrases) — keep them in sync.
 //
 // Intents run inside the menu bar app itself (no extension): the system launches Murmur in the
@@ -18,8 +18,8 @@ enum MurmurIntentError: Error, CustomLocalizedStringResourceConvertible {
 
     var localizedStringResource: LocalizedStringResource {
         switch self {
-        case .notRunning: "Murmur ещё не запустился, попробуйте ещё раз."
-        case .mixNotFound: "Такого микса больше нет."
+        case .notRunning: "Murmur hasn't started yet, please try again."
+        case .mixNotFound: "This mix no longer exists."
         }
     }
 }
@@ -42,7 +42,7 @@ extension MixStore {
 // MARK: Mix entity
 
 struct MixEntity: AppEntity {
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Микс"
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Mix"
     static let defaultQuery = MixQuery()
 
     let id: String
@@ -84,15 +84,15 @@ struct MixQuery: EntityStringQuery {
 // MARK: Playback
 
 struct PlayMixIntent: AppIntent {
-    static let title: LocalizedStringResource = "Включить микс"
-    static let description = IntentDescription("Включает готовый или сохранённый микс Murmur.")
+    static let title: LocalizedStringResource = "Play Mix"
+    static let description = IntentDescription("Plays a built-in or saved Murmur mix.")
     static let openAppWhenRun = false
 
-    @Parameter(title: "Микс", requestValueDialog: "Какой микс включить?")
+    @Parameter(title: "Mix", requestValueDialog: "Which mix?")
     var mix: MixEntity
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Включить микс \(\.$mix)")
+        Summary("Play mix \(\.$mix)")
     }
 
     @MainActor
@@ -105,8 +105,8 @@ struct PlayMixIntent: AppIntent {
 }
 
 struct ShuffleIntent: AppIntent {
-    static let title: LocalizedStringResource = "Наугад"
-    static let description = IntentDescription("Включает случайный, но правдоподобный микс: главный звук и один-два подходящих к нему.")
+    static let title: LocalizedStringResource = "Shuffle"
+    static let description = IntentDescription("Plays a random but believable mix: one main sound plus one or two that belong with it.")
     static let openAppWhenRun = false
 
     @MainActor
@@ -117,8 +117,8 @@ struct ShuffleIntent: AppIntent {
 }
 
 struct TogglePlaybackIntent: AppIntent {
-    static let title: LocalizedStringResource = "Пауза / Играть"
-    static let description = IntentDescription("Ставит звук на паузу или продолжает играть. Если ничего не выбрано, включает микс наугад.")
+    static let title: LocalizedStringResource = "Play / Pause"
+    static let description = IntentDescription("Pauses or resumes the sound. If nothing is selected, plays a random mix.")
     static let openAppWhenRun = false
 
     @MainActor
@@ -129,8 +129,8 @@ struct TogglePlaybackIntent: AppIntent {
 }
 
 struct PlayIntent: AppIntent {
-    static let title: LocalizedStringResource = "Играть"
-    static let description = IntentDescription("Продолжает играть текущий микс. Если ничего не выбрано, включает микс наугад.")
+    static let title: LocalizedStringResource = "Play"
+    static let description = IntentDescription("Resumes the current mix. If nothing is selected, plays a random mix.")
     static let openAppWhenRun = false
 
     @MainActor
@@ -141,8 +141,8 @@ struct PlayIntent: AppIntent {
 }
 
 struct PauseIntent: AppIntent {
-    static let title: LocalizedStringResource = "Пауза"
-    static let description = IntentDescription("Ставит звук на паузу; микс сохраняется.")
+    static let title: LocalizedStringResource = "Pause"
+    static let description = IntentDescription("Pauses the sound and keeps the mix.")
     static let openAppWhenRun = false
 
     @MainActor
@@ -153,8 +153,8 @@ struct PauseIntent: AppIntent {
 }
 
 struct StopIntent: AppIntent {
-    static let title: LocalizedStringResource = "Остановить"
-    static let description = IntentDescription("Выключает все звуки и помодоро-таймер.")
+    static let title: LocalizedStringResource = "Stop"
+    static let description = IntentDescription("Turns off all sounds and the Pomodoro timer.")
     static let openAppWhenRun = false
 
     @MainActor
@@ -165,15 +165,15 @@ struct StopIntent: AppIntent {
 }
 
 struct StartPomodoroIntent: AppIntent {
-    static let title: LocalizedStringResource = "Помодоро-таймер"
-    static let description = IntentDescription("Запускает помодоро: фокус под текущий микс, затем перерыв в тишине. Если ничего не выбрано, включится микс «Фокус».")
+    static let title: LocalizedStringResource = "Pomodoro Timer"
+    static let description = IntentDescription("Starts a Pomodoro: focus with the current mix, then a quiet break. If nothing is selected, the Focus mix starts.")
     static let openAppWhenRun = false
 
-    @Parameter(title: "Минуты фокуса", default: 25, inclusiveRange: (1, 180))
+    @Parameter(title: "Focus Minutes", default: 25, inclusiveRange: (1, 180))
     var minutes: Int
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Помодоро: фокус \(\.$minutes) мин")
+        Summary("Pomodoro: \(\.$minutes) min focus")
     }
 
     @MainActor
@@ -184,8 +184,8 @@ struct StartPomodoroIntent: AppIntent {
 }
 
 struct StopPomodoroIntent: AppIntent {
-    static let title: LocalizedStringResource = "Остановить помодоро"
-    static let description = IntentDescription("Останавливает помодоро-таймер; звук остаётся как есть.")
+    static let title: LocalizedStringResource = "Stop Pomodoro"
+    static let description = IntentDescription("Stops the Pomodoro timer; the sound stays as it is.")
     static let openAppWhenRun = false
 
     @MainActor
@@ -196,15 +196,15 @@ struct StopPomodoroIntent: AppIntent {
 }
 
 struct SetVolumeIntent: AppIntent {
-    static let title: LocalizedStringResource = "Громкость Murmur"
-    static let description = IntentDescription("Устанавливает общую громкость Murmur.")
+    static let title: LocalizedStringResource = "Murmur Volume"
+    static let description = IntentDescription("Sets Murmur's overall volume.")
     static let openAppWhenRun = false
 
-    @Parameter(title: "Громкость", default: 60, controlStyle: .slider, inclusiveRange: (0, 100))
+    @Parameter(title: "Volume", default: 60, controlStyle: .slider, inclusiveRange: (0, 100))
     var percent: Double
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Громкость Murmur: \(\.$percent)")
+        Summary("Murmur volume: \(\.$percent)")
     }
 
     @MainActor
@@ -222,19 +222,19 @@ struct SetVolumeIntent: AppIntent {
 /// The system calls `perform()` when the Focus turns on (with the chosen values) and again when it
 /// turns off (with default values, i.e. no mix) — so whether to pause is remembered at activation.
 struct MurmurFocusFilter: SetFocusFilterIntent {
-    static let title: LocalizedStringResource = "Микс Murmur"
-    static let description: IntentDescription? = IntentDescription("Включает микс, когда включается режим фокусирования.")
+    static let title: LocalizedStringResource = "Murmur Mix"
+    static let description: IntentDescription? = IntentDescription("Plays a mix when the Focus turns on.")
 
-    @Parameter(title: "Микс")
+    @Parameter(title: "Mix")
     var mix: MixEntity?
 
-    @Parameter(title: "Пауза, когда режим выключится", default: true)
+    @Parameter(title: "Pause when the Focus ends", default: true)
     var pauseWhenOff: Bool
 
     var displayRepresentation: DisplayRepresentation {
-        guard let mix else { return DisplayRepresentation(title: "Без микса") }
+        guard let mix else { return DisplayRepresentation(title: "No mix") }
         return pauseWhenOff
-            ? DisplayRepresentation(title: "\(mix.name)", subtitle: "Пауза, когда режим выключится")
+            ? DisplayRepresentation(title: "\(mix.name)", subtitle: "Pause when the Focus ends")
             : DisplayRepresentation(title: "\(mix.name)")
     }
 
@@ -279,43 +279,43 @@ struct MurmurShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: PlayMixIntent(),
             phrases: [
-                "Включи \(\.$mix) в \(.applicationName)",
-                "Включи микс в \(.applicationName)",
+                "Play \(\.$mix) in \(.applicationName)",
+                "Play a mix in \(.applicationName)",
             ],
-            shortTitle: "Включить микс",
+            shortTitle: "Play Mix",
             systemImageName: "play.circle"
         )
         AppShortcut(
             intent: ShuffleIntent(),
             phrases: [
-                "\(.applicationName) наугад",
-                "Включи что-нибудь в \(.applicationName)",
+                "Shuffle \(.applicationName)",
+                "Play something in \(.applicationName)",
             ],
-            shortTitle: "Наугад",
+            shortTitle: "Shuffle",
             systemImageName: "dice"
         )
         AppShortcut(
             intent: PauseIntent(),
-            phrases: ["Пауза в \(.applicationName)", "Поставь \(.applicationName) на паузу"],
-            shortTitle: "Пауза",
+            phrases: ["Pause \(.applicationName)", "Pause sounds in \(.applicationName)"],
+            shortTitle: "Pause",
             systemImageName: "pause.circle"
         )
         AppShortcut(
             intent: PlayIntent(),
-            phrases: ["Продолжи \(.applicationName)", "Играй в \(.applicationName)"],
-            shortTitle: "Играть",
+            phrases: ["Resume \(.applicationName)", "Play \(.applicationName)"],
+            shortTitle: "Play",
             systemImageName: "play"
         )
         AppShortcut(
             intent: StopIntent(),
-            phrases: ["Выключи \(.applicationName)", "Останови \(.applicationName)"],
-            shortTitle: "Остановить",
+            phrases: ["Turn off \(.applicationName)", "Stop \(.applicationName)"],
+            shortTitle: "Stop",
             systemImageName: "stop.circle"
         )
         AppShortcut(
             intent: StartPomodoroIntent(),
-            phrases: ["Помодоро в \(.applicationName)", "Запусти помодоро в \(.applicationName)"],
-            shortTitle: "Помодоро",
+            phrases: ["Pomodoro in \(.applicationName)", "Start a Pomodoro in \(.applicationName)"],
+            shortTitle: "Pomodoro",
             systemImageName: "timer"
         )
     }
