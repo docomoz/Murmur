@@ -7,6 +7,16 @@
     <link>https://github.com/docomoz/Murmur</link>
     <language>ru</language>
     <item>
+      <title>Murmur 1.11.1</title>
+      <pubDate>Wed, 14 Oct 2026 10:47:18 +0000</pubDate>
+      <link>https://github.com/docomoz/Murmur/releases/tag/v1.11.1</link>
+      <sparkle:version>13</sparkle:version>
+      <sparkle:shortVersionString>1.11.1</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description sparkle:format="markdown"><![CDATA[- **Murmur больше не нагружает процессор в фоне.** В 1.11 функция «Тише во время созвонов» при каждом звуке любого приложения (уведомление, сообщение, видео в браузере) заново проверяла все аудиопроцессы — и чем дольше Murmur был запущен, тем дороже обходилась каждая проверка. Даже без звука он мог расходовать заметную долю батареи. Исправлено: теперь на чужой звук уходят миллисекунды.]]></description>
+      <enclosure url="https://github.com/docomoz/Murmur/releases/download/v1.11.1/Murmur.dmg" length="40245231" type="application/octet-stream" sparkle:edSignature="2yB/cGkM7/pwnVrg0oOghdzwYWZdEuSfxtERah1WvXKVlxddz69CNh6DHc5s0fjWMdjCFx/dc/uvH4IlwURgAw=="/>
+    </item>
+    <item>
       <title>Murmur 1.11</title>
       <pubDate>Mon, 12 Oct 2026 11:04:37 +0000</pubDate>
       <link>https://github.com/docomoz/Murmur/releases/tag/v1.11</link>
