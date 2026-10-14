@@ -230,7 +230,7 @@ STAGE="build/dmg"
 mkdir -p "$STAGE/.background"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-swift scripts/make_dmg_background.swift Resources/icon-1024.png build/dmg-bg $WIN_W $WIN_H $APP_X $APPS_X $ICON_Y
+swift scripts/make_dmg_background.swift build/dmg-bg $WIN_W $WIN_H $APP_X $APPS_X $ICON_Y
 tiffutil -cathidpicheck build/dmg-bg.png build/dmg-bg@2x.png -out "$STAGE/.background/background.tiff" 2>/dev/null
 rm build/dmg-bg.png build/dmg-bg@2x.png
 
