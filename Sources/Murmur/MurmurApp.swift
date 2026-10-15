@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         Analytics.start(appID: Analytics.appIDFromBundle)
         store.sendRecoveredListening()
         Analytics.send("App.launched", store.launchParameters)
+        Analytics.flush()
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.target = self
@@ -657,6 +658,10 @@ enum SelfTest {
         Analytics.send("Test.event", ["a": "b"], minutes: 1.26)
         Analytics.capture = nil
         if got != [AnalyticsSignal(name: "Test.event", parameters: ["a": "b"], minutes: 1.3)] { failures.append("captured \(got)") }
+        // The SDK must not wake an idle menu bar app: no 1 s session-stats timer, uploads at most every 5 min.
+        let idle = Analytics.idleBehaviour(appID: "X")
+        if idle.sessionStats { failures.append("SDK session stats on (1 Hz timer + UserDefaults writes)") }
+        if idle.transmitInterval < 300 { failures.append("SDK uploads every \(idle.transmitInterval) s") }
         print("\nanalytics wrapper: " + (failures.isEmpty ? "ok" : "FAIL " + failures.joined(separator: "; ")))
         return failures.isEmpty
     }

@@ -33,9 +33,7 @@ enum Analytics {
     /// Starts the SDK. A no-op without an App ID and in the test modes (`MixStore.sandboxed`).
     static func start(appID: String?) {
         guard !isLive, let appID, !appID.isEmpty, !MixStore.sandboxed else { return }
-        let config = TelemetryDeck.Config(appID: appID)
-        // `App.launched` carries the same information plus the settings, so skip the SDK's own signal.
-        config.sendNewSessionBeganSignal = false
+        let config = makeConfig(appID: appID)
         if ProcessInfo.processInfo.environment["MURMUR_ANALYTICS_LOG"] == "1" {
             config.logHandler = LogHandler(logLevel: .debug) { level, message in
                 print("[TelemetryDeck] \(level): \(message)")
@@ -43,6 +41,32 @@ enum Analytics {
         }
         TelemetryDeck.initialize(config: config)
         isLive = true
+    }
+
+    private static func makeConfig(appID: String) -> TelemetryDeck.Config {
+        let config = TelemetryDeck.Config(appID: appID)
+        // `App.launched` carries the same information plus the settings, so skip the SDK's own signal.
+        config.sendNewSessionBeganSignal = false
+        // Session stats run a 1 s main-thread timer that writes UserDefaults every tick, and on macOS it
+        // only stops when the app resigns active — which a menu bar app may never do. That's the idle
+        // wakeup kind of regression 1.11.1 fixed; the SDK's Retention.* parameters aren't worth it.
+        config.sessionStatsEnabled = false
+        // The SDK retries its upload every transmitInterval even with nothing to send; 5 min is plenty
+        // (signals also go out at launch, and unsent ones are saved at quit).
+        config.transmitInterval = 300
+        return config
+    }
+
+    /// What the SDK will do while Murmur sits idle in the menu bar (checked by `--selftest`).
+    static func idleBehaviour(appID: String) -> (sessionStats: Bool, transmitInterval: TimeInterval) {
+        let config = makeConfig(appID: appID)
+        return (config.sessionStatsEnabled, config.transmitInterval)
+    }
+
+    /// Uploads what's queued now instead of waiting for the next transmit interval (used once at launch).
+    static func flush() {
+        guard isLive else { return }
+        TelemetryDeck.requestImmediateSync()
     }
 
     static func send(_ name: String, _ parameters: [String: String] = [:], minutes: Double? = nil) {
