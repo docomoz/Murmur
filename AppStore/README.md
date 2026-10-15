@@ -94,7 +94,9 @@ App Store Connect → the app → version **1.0 Prepare for Submission**. Everyt
 5. **Version Release**: manual or automatic after approval.
 6. **App Information** on the left: categories (Productivity / Health & Fitness), age rating
    (every answer "No" → 4+), Privacy Policy URL.
-7. **App Privacy** → Get Started → "No, we do not collect data" → Publish.
+7. **App Privacy** → Get Started → "Yes, we collect data" → **Usage Data → Product Interaction** and
+   **Identifiers → Device ID**; for each: used for Analytics, not linked to the user's identity, not used for
+   tracking → Publish. (Anonymous statistics via TelemetryDeck; the answers match `AppStore/PrivacyInfo.xcprivacy`.)
 8. **Pricing and Availability** → Free, all countries.
 
 Add the Russian localization in the same place (Localization → Russian): the texts are in `metadata.md`. The app's

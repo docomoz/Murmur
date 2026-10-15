@@ -77,6 +77,7 @@ done
 rm -rf build/bin
 cp -R Resources/Sounds "$APP/Contents/Resources/Sounds"
 cp CREDITS.md "$APP/Contents/Resources/"
+cp .build/checkouts/SwiftSDK/LICENSE "$APP/Contents/Resources/TelemetryDeck-LICENSE.txt"   # MIT: ship the notice
 # en/ru localizations: Russian for the App Intents texts (the UI itself is translated in code)
 cp -R Resources/Localization/*.lproj "$APP/Contents/Resources/"
 

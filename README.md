@@ -13,7 +13,8 @@ Nature sounds for focus and sleep, right in the macOS menu bar. Mix rain, a camp
 - **Pomodoro timer**: 15–45 minutes of focus to your mix, breaks in silence, a singing-bowl strike marks each phase change. Global pause **⌃⌥P**, launch at login.
 - **Liquid Glass** on macOS 26+: the panel sits on system glass; the theme (system/light/dark), the backdrop (system glass or tinted with the mix's colors) and the accent color (system or one of 11 options) are configurable; the menu bar icon gently "breathes" while sound is playing.
 - The UI is in English, or in Russian when Russian is the Mac's first language.
-- A native SwiftUI + AVAudioEngine app; the only dependency is Sparkle, which updates the DMG version. Apple Silicon and Intel, macOS 14+.
+- Anonymous usage statistics (via [TelemetryDeck](https://telemetrydeck.com)): which features and sounds are used and for how long — nothing personal, no mix names, no accounts. See the [privacy policy](AppStore/PRIVACY.md).
+- A native SwiftUI + AVAudioEngine app; dependencies: Sparkle (updates the DMG version) and the TelemetryDeck SDK. Apple Silicon and Intel, macOS 14+.
 
 ## Installation
 
@@ -51,4 +52,4 @@ Project layout, architecture and gotchas are in [HANDOFF.md](HANDOFF.md).
 
 Recordings come from the open [Moodist](https://github.com/remvze/moodist) library (Pixabay Content License and CC0); details in [CREDITS.md](CREDITS.md). White noise and the heartbeat are synthesized by the app.
 
-The code is MIT-licensed, see [LICENSE](LICENSE). The recordings are covered by their own licenses. Self-update is [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT).
+The code is MIT-licensed, see [LICENSE](LICENSE). The recordings are covered by their own licenses. Self-update is [Sparkle](https://github.com/sparkle-project/Sparkle) (MIT); usage statistics use the [TelemetryDeck Swift SDK](https://github.com/TelemetryDeck/SwiftSDK) (MIT).

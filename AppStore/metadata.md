@@ -13,7 +13,7 @@ Everything to paste into App Store Connect. Apple's limits are in parentheses; t
 | Secondary category | Health & Fitness |
 | Price | Free, all countries |
 | Age rating | 4+ — answer "No" / "None" to every question |
-| App Privacy | Data Not Collected |
+| App Privacy | Data Not Linked to You: **Usage Data → Product Interaction** and **Identifiers → Device ID**, purpose Analytics, not used for tracking (TelemetryDeck; the SDK hashes the identifier) |
 | Encryption | Not used (already declared in the build: `ITSAppUsesNonExemptEncryption = NO`) |
 | Copyright | `2026 Maksim Berezkin` |
 | Support URL | https://github.com/docomoz/Murmur/issues |
@@ -73,7 +73,7 @@ BEAUTIFUL AND NATIVE
 • The menu bar icon gently "breathes" while sound is playing
 
 HONEST
-No accounts, ads, subscriptions or data collection. Works completely offline.
+No accounts, ads or subscriptions. Only anonymous usage statistics, to make the app better. All sounds work offline.
 
 Recordings come from the open Moodist library (Pixabay License and CC0).
 ```
@@ -132,7 +132,7 @@ Murmur — тихий фон для работы, учёбы и сна. Он ж�
 • Значок в строке меню мягко «дышит», пока играет звук
 
 ЧЕСТНО
-Без аккаунтов, рекламы, подписок и сбора данных. Работает полностью офлайн.
+Без аккаунтов, рекламы и подписок. Только анонимная статистика использования, чтобы делать приложение лучше. Все звуки работают офлайн.
 
 Записи — из открытой библиотеки Moodist (Pixabay License и CC0).
 ```
@@ -154,7 +154,8 @@ Murmur is a menu bar app (LSUIElement, no Dock icon).
 - ⌃⌥P toggles playback from any app. Space toggles it while the mixer is open.
 - Gear icon: theme, backdrop, accent color, launch at login, About, Quit.
 
-No account, no network access and no data collection. All recordings are bundled
+No account. The app sends anonymous usage statistics (TelemetryDeck); nothing else goes over the network.
+All recordings are bundled
 (Moodist library, Pixabay License / CC0); white noise and heartbeat are synthesized in real time.
 The UI follows the system language: Russian if it is the first language, English otherwise.
 ```

@@ -30,3 +30,5 @@ White noise and the heartbeat are synthesized by the app in real time.
 # Software
 
 The DMG version updates itself with **Sparkle** (https://sparkle-project.org, MIT License); the license text ships inside the app: `Contents/Resources/Sparkle-LICENSE.txt`. The App Store version doesn't include Sparkle.
+
+Anonymous usage statistics are sent with the **TelemetryDeck Swift SDK** (https://github.com/TelemetryDeck/SwiftSDK, MIT License); the license text ships inside the app: `Contents/Resources/TelemetryDeck-LICENSE.txt`.
