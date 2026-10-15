@@ -2,7 +2,7 @@
 
 A native macOS menu bar app that mixes background sounds (rain, a campfire, a café, whales, white noise) for work and sleep. Sounds come only from the open Moodist library (Pixabay License / CC0) or are synthesized in code; the project has no third-party sounds, icons or brands, and must never get any.
 
-- State: v1.12, works, installed by the author in `/Applications/Murmur.app`.
+- State: v1.13, works, installed by the author in `/Applications/Murmur.app`.
 - Stack: Swift 5 language mode (Swift 6.4 compiler), SwiftUI + AppKit, AVAudioEngine. Dependencies (SwiftPM): Sparkle 2 (self-update in the DMG version only, §6) and the TelemetryDeck Swift SDK 2.14.2 (anonymous usage statistics, §4 "Analytics").
 - Minimum OS: macOS 14 Sonoma. Universal build (arm64 + x86_64).
 - The repository is English: docs, code comments, script output, commit messages and release notes. Russian exists only as a product localization (`L()` UI strings, `ru.lproj` for App Intents, the Russian App Store page, Russian release notes next to the English ones).

@@ -38,8 +38,8 @@ SPARKLE_PUBLIC_KEY="$(printf '%s' "$SPARKLE_PUBLIC_KEY" | tr -d '[:space:]')"
 TELEMETRYDECK_APP_ID="${TELEMETRYDECK_APP_ID:-$(cat Resources/telemetrydeck-app-id.txt 2>/dev/null || true)}"
 TELEMETRYDECK_APP_ID="$(printf '%s' "$TELEMETRYDECK_APP_ID" | tr -d '[:space:]')"
 
-VERSION="1.12"
-BUILD_NUMBER="14"   # CFBundleVersion — Sparkle compares it, so raise it with every release
+VERSION="1.13"
+BUILD_NUMBER="15"   # CFBundleVersion — Sparkle compares it, so raise it with every release
 APP="build/Murmur.app"
 
 SWIFT_FLAGS=()
