@@ -1,6 +1,6 @@
 # Usage analytics — design
 
-Date: 2026-10-15. Status: draft, waiting for the author's approval.
+Date: 2026-10-15. Status: approved by the author (2026-10-15).
 
 ## Why
 
@@ -48,8 +48,13 @@ sized at roughly 20 events per active user per day → ~600/month → the free p
 Murmur outgrows that, the first knob is dropping `Sound.listened` in favour of the `sounds` parameter on
 `Listening.ended`.
 
-**Account.** The assistant can't create accounts. The author signs up at telemetrydeck.com, creates an app
-"Murmur" and sends the **App ID** (not a secret: it ships inside every app).
+**Account.** Created by the author: app "Murmur" (macOS), **App ID `4D9D3AF4-84E7-48A8-8769-82DFADDECCB4`**,
+organization namespace `com.docomoz` (not passed to the 2.x SDK: its docs say to leave `namespace` unset).
+The App ID isn't a secret — it ships inside every app.
+
+The SDK sends `TelemetryDeck.Session.started` at every launch by itself. `App.launched` carries the same
+information plus the settings snapshot, so the SDK's own signal is turned off
+(`config.sendNewSessionBeganSignal = false`) to save budget (assistant's call).
 
 ## Events
 
