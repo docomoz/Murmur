@@ -2,10 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Mac App Store requires the App Sandbox. Murmur needs nothing beyond it:
-	     audio output, its own settings, the login item and the ⌃⌥P hotkey all work sandboxed.
-	     No network, files, camera or microphone access. -->
+	<!-- Mac App Store requires the App Sandbox. Audio output, the app's own settings, the login item
+	     and the ⌃⌥P hotkey all work sandboxed. No files, camera or microphone access. -->
 	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<!-- Outgoing connections only: anonymous usage statistics (TelemetryDeck). -->
+	<key>com.apple.security.network.client</key>
 	<true/>
 </dict>
 </plist>

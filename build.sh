@@ -34,6 +34,9 @@ fi
 SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://raw.githubusercontent.com/docomoz/Murmur/main/appcast.xml}"
 SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-$(cat Resources/sparkle-public-key.txt 2>/dev/null || true)}"
 SPARKLE_PUBLIC_KEY="$(printf '%s' "$SPARKLE_PUBLIC_KEY" | tr -d '[:space:]')"
+# Anonymous usage statistics (TelemetryDeck); the App ID isn't a secret, it ships in every copy.
+TELEMETRYDECK_APP_ID="${TELEMETRYDECK_APP_ID:-$(cat Resources/telemetrydeck-app-id.txt 2>/dev/null || true)}"
+TELEMETRYDECK_APP_ID="$(printf '%s' "$TELEMETRYDECK_APP_ID" | tr -d '[:space:]')"
 
 VERSION="1.12"
 BUILD_NUMBER="14"   # CFBundleVersion — Sparkle compares it, so raise it with every release
@@ -56,11 +59,21 @@ echo '["AnyResolverProviding","AppEntity","AppEnum","AppExtension","AppIntent","
 CONST_VALUES=(-Xswiftc -emit-const-values -Xswiftc -const-gather-protocols-list -Xswiftc "$PWD/build/intents/protocols.json")
 for arch in arm64 x86_64; do
   swift build -c release --triple "$arch-apple-macosx14.0" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} "${CONST_VALUES[@]}"
-  cp "$(swift build -c release --triple "$arch-apple-macosx14.0" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} "${CONST_VALUES[@]}" --show-bin-path)/Murmur" "build/bin/Murmur-$arch"
+  BIN_PATH="$(swift build -c release --triple "$arch-apple-macosx14.0" ${SWIFT_FLAGS[@]+"${SWIFT_FLAGS[@]}"} "${CONST_VALUES[@]}" --show-bin-path)"
+  cp "$BIN_PATH/Murmur" "build/bin/Murmur-$arch"
+  # SwiftPM resource bundles of dependencies (TelemetryDeck's privacy manifest); architecture-neutral.
+  if [ "$arch" = arm64 ]; then
+    for bundle in "$BIN_PATH"/TelemetryDeck_*.bundle; do
+      if [ -d "$bundle" ]; then cp -R "$bundle" build/bin/; fi
+    done
+  fi
 done
 
 echo "▸ Assembling bundle…"
 lipo -create build/bin/Murmur-arm64 build/bin/Murmur-x86_64 -output "$APP/Contents/MacOS/Murmur"
+for bundle in build/bin/*.bundle; do
+  if [ -d "$bundle" ]; then cp -R "$bundle" "$APP/Contents/Resources/"; fi
+done
 rm -rf build/bin
 cp -R Resources/Sounds "$APP/Contents/Resources/Sounds"
 cp CREDITS.md "$APP/Contents/Resources/"
@@ -120,6 +133,11 @@ if [ -z "$APPSTORE" ] && [ -n "$SPARKLE_PUBLIC_KEY" ]; then
 elif [ -z "$APPSTORE" ]; then
   echo "  (self-update is off: no Resources/sparkle-public-key.txt or SPARKLE_PUBLIC_KEY)"
 fi
+if [ -n "$TELEMETRYDECK_APP_ID" ]; then
+  /usr/libexec/PlistBuddy -c "Add :TelemetryDeckAppID string $TELEMETRYDECK_APP_ID" "$APP/Contents/Info.plist"
+else
+  echo "  (analytics is off: no Resources/telemetrydeck-app-id.txt or TELEMETRYDECK_APP_ID)"
+fi
 echo "▸ App Intents metadata…"
 # Same tools and flags as Xcode's "Extract app intents metadata" and "App Intents SSU training"
 # build steps. The metadata is architecture-neutral, so the arm64 compile-time values are enough.
@@ -128,9 +146,10 @@ if ! xcrun --find appintentsmetadataprocessor >/dev/null 2>&1; then
   exit 1
 fi
 ls "$PWD"/Sources/Murmur/*.swift > build/intents/sources.txt
-# Release builds are whole-module: one file per module. Newest wins, in case an older build
+# Release builds are whole-module: one file per module; only the app's module matters (dependencies
+# like TelemetryDeck get their own). Newest wins, in case an older build
 # layout left a stale copy somewhere in .build.
-find "$PWD/.build" -ipath '*release*' -path '*/arm64/*' -name '*.swiftconstvalues' -print0 \
+find "$PWD/.build" -ipath '*release*' -path '*/Murmur.build/*' -path '*/arm64/*' -name '*.swiftconstvalues' -print0 \
   | xargs -0 ls -t 2>/dev/null | head -1 > build/intents/constvalues.txt || true
 if [ ! -s build/intents/constvalues.txt ]; then
   echo "✗ The compiler produced no .swiftconstvalues — nothing to build Metadata.appintents from" >&2
