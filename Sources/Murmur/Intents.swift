@@ -97,9 +97,10 @@ struct PlayMixIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        Analytics.send("Intent.performed", ["intent": "PlayMixIntent"])
         let store = try MixStore.forIntents()
         guard let found = store.allMixes.first(where: { $0.id == mix.id }) else { throw MurmurIntentError.mixNotFound }
-        store.apply(found)
+        store.apply(found, source: .intent)
         return .result()
     }
 }
@@ -111,7 +112,8 @@ struct ShuffleIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        try MixStore.forIntents().randomMix()
+        Analytics.send("Intent.performed", ["intent": "ShuffleIntent"])
+        try MixStore.forIntents().randomMix(source: .intent)
         return .result()
     }
 }
@@ -123,6 +125,7 @@ struct TogglePlaybackIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        Analytics.send("Intent.performed", ["intent": "TogglePlaybackIntent"])
         try MixStore.forIntents().togglePlay()
         return .result()
     }
@@ -135,6 +138,7 @@ struct PlayIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        Analytics.send("Intent.performed", ["intent": "PlayIntent"])
         try MixStore.forIntents().play()
         return .result()
     }
@@ -147,6 +151,7 @@ struct PauseIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        Analytics.send("Intent.performed", ["intent": "PauseIntent"])
         try MixStore.forIntents().pause()
         return .result()
     }
@@ -159,6 +164,7 @@ struct StopIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        Analytics.send("Intent.performed", ["intent": "StopIntent"])
         try MixStore.forIntents().stopAll()
         return .result()
     }
@@ -178,7 +184,8 @@ struct StartPomodoroIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        try MixStore.forIntents().startPomodoro(minutes: minutes)
+        Analytics.send("Intent.performed", ["intent": "StartPomodoroIntent"])
+        try MixStore.forIntents().startPomodoro(minutes: minutes, source: .intent)
         return .result()
     }
 }
@@ -190,6 +197,7 @@ struct StopPomodoroIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        Analytics.send("Intent.performed", ["intent": "StopPomodoroIntent"])
         try MixStore.forIntents().stopPomodoro()
         return .result()
     }
@@ -209,6 +217,7 @@ struct SetVolumeIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
+        Analytics.send("Intent.performed", ["intent": "SetVolumeIntent"])
         try MixStore.forIntents().setMaster(min(max(percent, 0), 100) / 100)
         return .result()
     }
@@ -242,13 +251,17 @@ struct MurmurFocusFilter: SetFocusFilterIntent {
     func perform() async throws -> some IntentResult {
         let store = try MixStore.forIntents()
         if let mix, let found = store.allMixes.first(where: { $0.id == mix.id }) {
-            store.apply(found)
+            Analytics.send("FocusFilter.changed", ["state": "on"])
+            store.apply(found, source: .focusFilter)
             FocusSession.started(mixID: found.id, pauseWhenOff: pauseWhenOff)
         } else if let session = FocusSession.end(), session.pauseWhenOff,
                   let started = store.allMixes.first(where: { $0.id == session.mixID }),
                   store.isPlaying, store.isCurrent(started) {
             // Only pause what the Focus itself started; if the user switched sounds since, leave them.
+            Analytics.send("FocusFilter.changed", ["state": "off", "paused": "yes"])
             store.pause()
+        } else {
+            Analytics.send("FocusFilter.changed", ["state": "off", "paused": "no"])
         }
         return .result()
     }

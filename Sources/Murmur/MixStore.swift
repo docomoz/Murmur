@@ -218,6 +218,19 @@ final class MixStore: ObservableObject {
 
     var allMixes: [Mix] { Mix.presets + userMixes }
 
+    /// Settings snapshot sent with `App.launched`.
+    var launchParameters: [String: String] {
+        #if APPSTORE
+        let build = "appstore"
+        #else
+        let build = "dmg"
+        #endif
+        func onOff(_ on: Bool) -> String { on ? "on" : "off" }
+        return ["build": build, "livingMix": onOff(livingMix), "duckDuringCalls": onOff(duckDuringCalls),
+                "launchAtLogin": onOff(launchAtLogin), "theme": theme.rawValue, "backdrop": backdrop.rawValue,
+                "accent": accent.rawValue, "userMixes": String(userMixes.count)]
+    }
+
     func isActive(_ sound: Sound) -> Bool { active.contains(sound.id) }
 
     func volume(_ sound: Sound) -> Double { volumes[sound.id] ?? sound.defaultVolume }
@@ -295,6 +308,7 @@ final class MixStore: ObservableObject {
     }
 
     func stopAll() {
+        sendPomodoroStopped()
         endPomodoro()
         listeningEndReason = "stop"
         isPlaying = false
@@ -303,7 +317,15 @@ final class MixStore: ObservableObject {
         persist()
     }
 
-    func apply(_ mix: Mix) {
+    /// The user picks a mix: a preset, a saved one (panel, menu, Shortcuts or a Focus filter).
+    func apply(_ mix: Mix, source: AnalyticsSource = .panel) {
+        var parameters = ["kind": mix.builtIn ? "preset" : "user", "source": source.rawValue]
+        if mix.builtIn { parameters["preset"] = mix.id }
+        Analytics.send("Mix.applied", parameters)
+        load(mix)
+    }
+
+    private func load(_ mix: Mix) {
         active = Sound.all.map(\.id).filter { mix.levels[$0] != nil }
         for (id, level) in mix.levels { volumes[id] = level }
         isPlaying = true
@@ -312,8 +334,9 @@ final class MixStore: ObservableObject {
     }
 
     /// Shuffle: a random but believable scene — one main sound plus 1–2 that belong with it.
-    func randomMix() {
-        apply(Mix(id: "random", name: "", emoji: "", levels: Self.randomLevels(avoiding: Set(active))))
+    func randomMix(source: AnalyticsSource = .panel) {
+        Analytics.send("Mix.applied", ["kind": "shuffle", "source": source.rawValue])
+        load(Mix(id: "random", name: "", emoji: "", levels: Self.randomLevels(avoiding: Set(active))))
     }
 
     /// A place you could actually be in: the anchor is the main sound, extras only ever join
@@ -461,6 +484,7 @@ final class MixStore: ObservableObject {
         userMixes.append(mix)
         persist()
         mixesChanged()
+        Analytics.send("Mix.saved", ["soundCount": String(mix.levels.count)])
     }
 
     /// Snapshot-only: show sample saved mixes without touching the user's data.
@@ -470,6 +494,7 @@ final class MixStore: ObservableObject {
         userMixes.removeAll { $0.id == mix.id }
         persist()
         mixesChanged()
+        Analytics.send("Mix.deleted")
     }
 
     /// Lets Siri / Spotlight phrases like "Play <mix> in Murmur" learn about new and deleted mixes.
@@ -486,13 +511,16 @@ final class MixStore: ObservableObject {
 
     /// Starts (or restarts) Pomodoro with a fresh focus round, `minutes` long or the last length chosen.
     /// The current mix plays; with nothing chosen, the built-in Focus mix starts. No cue at the start.
-    func startPomodoro(minutes: Int? = nil) {
+    func startPomodoro(minutes: Int? = nil, source: AnalyticsSource = .panel) {
         if let minutes {
             pomodoroPlan = PomodoroPlan(focus: min(max(minutes, PomodoroPlan.allowed.lowerBound), PomodoroPlan.allowed.upperBound))
             if !Self.sandboxed { defaults.set(pomodoroPlan.id, forKey: "pomodoroPlan") }
         }
+        sendPomodoroStopped()
         endPomodoro()
         pomodoro = PomodoroState(plan: pomodoroPlan, start: clock())
+        pomodoroRun = (start: clock(), completedFocus: 0)
+        Analytics.send("Pomodoro.started", ["focusMinutes": String(pomodoroPlan.focus), "source": source.rawValue])
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tickPomodoro() }
         }
@@ -504,12 +532,14 @@ final class MixStore: ObservableObject {
 
     /// Stops Pomodoro and leaves the sound as it is (a break stays quiet).
     func stopPomodoro() {
+        sendPomodoroStopped()
         endPomodoro()
     }
 
     /// Ends the current phase now: Take a Break Now / Skip Break.
     func skipPomodoroPhase() {
         guard let state = pomodoro else { return }
+        Analytics.send("Pomodoro.skipped", ["phase": Self.phaseName(state.phase)])
         enter(state.advanced(at: clock()))
         tickPomodoro()
     }
@@ -519,12 +549,28 @@ final class MixStore: ObservableObject {
         pomodoroTick = nil
         pomodoro = nil
         pomodoroRemaining = nil
+        pomodoroRun = nil
+    }
+
+    /// When the current Pomodoro run began and how many focus rounds it has finished (analytics).
+    private var pomodoroRun: (start: Date, completedFocus: Int)?
+
+    private static func phaseName(_ phase: PomodoroPhase) -> String { phase.isBreak ? "break" : "focus" }
+
+    private func sendPomodoroStopped() {
+        guard let state = pomodoro, let run = pomodoroRun else { return }
+        Analytics.send("Pomodoro.stopped", ["phase": Self.phaseName(state.phase), "completedFocus": String(run.completedFocus)],
+                       minutes: clock().timeIntervalSince(run.start) / 60)
     }
 
     func tickPomodoro() {
         guard let state = pomodoro else { return }
         let now = clock()
         if !state.isPaused, state.remaining(at: now) <= 0 {
+            if state.phase == .focus {
+                pomodoroRun?.completedFocus += 1
+                Analytics.send("Pomodoro.focusCompleted", ["focusMinutes": String(state.plan.focus), "round": String(state.round)])
+            }
             enter(state.advanced(at: now))
         }
         pomodoroRemaining = pomodoro?.remaining(at: now)
@@ -542,7 +588,7 @@ final class MixStore: ObservableObject {
         pomodoroDriving = true
         defer { pomodoroDriving = false }
         if on, active.isEmpty, let focus = Mix.presets.first(where: { $0.id == "b.focus" }) {
-            apply(focus)
+            load(focus)
             return
         }
         isPlaying = on
@@ -555,7 +601,10 @@ final class MixStore: ObservableObject {
         guard let state = pomodoro else { return }
         let now = clock()
         if state.phase.isBreak {
-            if isPlaying { enter(state.advanced(at: now)) }
+            if isPlaying {
+                Analytics.send("Pomodoro.skipped", ["phase": "break"])
+                enter(state.advanced(at: now))
+            }
         } else if isPlaying, state.isPaused {
             pomodoro = state.resumed(at: now)
         } else if !isPlaying, !state.isPaused {

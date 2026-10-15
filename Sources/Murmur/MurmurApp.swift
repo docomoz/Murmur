@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard !SelfTest.isRendering, !CommandLine.arguments.contains("--playtest") else { return }
         Analytics.start(appID: Analytics.appIDFromBundle)
         store.sendRecoveredListening()
+        Analytics.send("App.launched", store.launchParameters)
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.target = self
@@ -462,6 +463,89 @@ enum SelfTest {
         if !checkPomodoro() { failed = true }
         if !checkAnalyticsWrapper() { failed = true }
         if !checkListening() { failed = true }
+        if !checkEvents() { failed = true }
+    }
+
+    /// Mix, Pomodoro and launch events: exact names and parameters, no event from Pomodoro's own
+    /// mix loading, and a user's mix name never leaving the app.
+    @MainActor
+    private static func checkEvents() -> Bool {
+        var failures: [String] = []
+        func expect(_ ok: Bool, _ what: String) { if !ok { failures.append(what) } }
+        MixStore.sandboxed = true
+        var now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        var got: [AnalyticsSignal] = []
+        Analytics.capture = { got.append($0) }
+        let store = MixStore()
+        store.cuesEnabled = false
+        store.setMaster(0)
+        store.clock = { now }
+        func named(_ prefix: String) -> [AnalyticsSignal] { got.filter { $0.name.hasPrefix(prefix) } }
+
+        store.stopAll(); got = []
+        store.apply(Mix.presets[0])
+        expect(named("Mix.applied").map(\.parameters) == [["kind": "preset", "preset": "b.cafe", "source": "panel"]], "preset: \(named("Mix."))")
+        got = []
+        store.randomMix(source: .intent)
+        expect(named("Mix.applied").map(\.parameters) == [["kind": "shuffle", "source": "intent"]], "shuffle: \(named("Mix."))")
+
+        // Pomodoro loading the Focus mix by itself isn't the user applying a mix.
+        store.stopAll(); got = []
+        store.startPomodoro(minutes: 25)
+        expect(named("Mix.applied").isEmpty, "Pomodoro's own Focus mix sent Mix.applied")
+        expect(named("Pomodoro").map(\.name) == ["Pomodoro.started"]
+               && named("Pomodoro").first?.parameters == ["focusMinutes": "25", "source": "panel"], "start: \(named("Pomodoro"))")
+        got = []
+        store.startPomodoro(minutes: 30)
+        expect(named("Pomodoro").map(\.name) == ["Pomodoro.stopped", "Pomodoro.started"]
+               && named("Pomodoro").last?.parameters["focusMinutes"] == "30", "restart: \(named("Pomodoro"))")
+        got = []
+        store.skipPomodoroPhase()
+        expect(named("Pomodoro").map(\.name) == ["Pomodoro.skipped"] && named("Pomodoro").first?.parameters == ["phase": "focus"],
+               "skip focus: \(named("Pomodoro"))")
+        got = []
+        store.togglePlay()   // Play during the break ends it early
+        expect(named("Pomodoro").map(\.parameters) == [["phase": "break"]], "play in a break: \(named("Pomodoro"))")
+
+        store.startPomodoro(minutes: 1); got = []
+        now += 61; store.tickPomodoro()
+        expect(named("Pomodoro").map(\.name) == ["Pomodoro.focusCompleted"]
+               && named("Pomodoro").first?.parameters == ["focusMinutes": "1", "round": "1"], "focus completed: \(named("Pomodoro"))")
+        got = []
+        now += 30; store.stopPomodoro()
+        expect(named("Pomodoro").map(\.name) == ["Pomodoro.stopped"]
+               && named("Pomodoro").first?.parameters == ["phase": "break", "completedFocus": "1"]
+               && named("Pomodoro").first?.minutes == 1.5, "stop: \(named("Pomodoro"))")
+
+        // A user's mix: the name stays home.
+        store.stopAll(); got = []
+        store.apply(Mix(id: "t", name: "", emoji: "", levels: ["rain": 0.4, "cafe": 0.5]))
+        store.saveCurrentMix(named: "SECRET")
+        expect(named("Mix.saved").map(\.parameters) == [["soundCount": "2"]], "saved: \(named("Mix."))")
+        if let secret = store.userMixes.first(where: { $0.name == "SECRET" }) {
+            store.apply(secret)
+            expect(named("Mix.applied").last?.parameters == ["kind": "user", "source": "panel"], "user mix: \(named("Mix."))")
+            store.delete(secret)
+            expect(named("Mix.deleted").count == 1 && named("Mix.deleted").first?.parameters == [:], "deleted: \(named("Mix."))")
+        } else {
+            failures.append("saved mix not found")
+        }
+        let leaks = got.filter { $0.name.contains("SECRET") || $0.parameters.values.contains { $0.contains("SECRET") } }
+        expect(leaks.isEmpty, "mix name leaked: \(leaks)")
+
+        #if APPSTORE
+        let build = "appstore"
+        #else
+        let build = "dmg"
+        #endif
+        let launch = store.launchParameters
+        expect(Set(launch.keys) == ["build", "livingMix", "duckDuringCalls", "launchAtLogin", "theme", "backdrop", "accent", "userMixes"]
+               && launch["build"] == build, "launch parameters: \(launch)")
+
+        store.stopAll()
+        Analytics.capture = nil
+        print("events: " + (failures.isEmpty ? "ok" : "FAIL " + failures.joined(separator: "; ")))
+        return failures.isEmpty
     }
 
     /// Listening sessions: per-sound minutes, the 30 s floor, every way a session ends, and a session
