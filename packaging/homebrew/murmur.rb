@@ -1,6 +1,6 @@
 cask "murmur" do
-  version "1.12"
-  sha256 "fde6a24c38550cda681c25d3cf1c9c592f6a805e248b12669774e4d6df0c6be3"
+  version "1.13"
+  sha256 "1980d12ae18a9c762d783481815994d92f8d33550e5d255386ecfc7db022f412"
 
   url "https://github.com/docomoz/Murmur/releases/download/v#{version}/Murmur.dmg"
   name "Murmur"

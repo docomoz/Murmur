@@ -7,6 +7,19 @@
     <link>https://github.com/docomoz/Murmur</link>
     <language>en</language>
     <item>
+      <title>Murmur 1.13</title>
+      <pubDate>Thu, 15 Oct 2026 06:00:56 +0000</pubDate>
+      <link>https://github.com/docomoz/Murmur/releases/tag/v1.13</link>
+      <sparkle:version>15</sparkle:version>
+      <sparkle:shortVersionString>1.13</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <description xml:lang="en" sparkle:format="markdown"><![CDATA[- **Anonymous usage statistics.** Murmur now sends anonymous statistics — which features and sounds are used and for how long — so it's clear what to improve and which sounds to add. Nothing personal: no mix names, no accounts, not linked to you, no ads or tracking. Details are in the [privacy policy](https://github.com/docomoz/Murmur/blob/main/AppStore/PRIVACY.md).
+- **An installer without text.** The DMG window shows just the app, an arrow and the Applications folder — the same in every language.]]></description>
+      <description xml:lang="ru" sparkle:format="markdown"><![CDATA[- **Анонимная статистика использования.** Теперь Murmur отправляет анонимную статистику — какие функции и звуки используются и сколько времени, — чтобы понимать, что улучшать и какие звуки добавлять. Ничего личного: без названий миксов, без аккаунтов, не связано с вами, без рекламы и трекинга. Подробности — в [политике конфиденциальности](https://github.com/docomoz/Murmur/blob/main/AppStore/PRIVACY.md).
+- **Установщик без текста.** В окне DMG только приложение, стрелка и папка Applications — одинаково на любом языке.]]></description>
+      <enclosure url="https://github.com/docomoz/Murmur/releases/download/v1.13/Murmur.dmg" length="40511922" type="application/octet-stream" sparkle:edSignature="zWyKbsqnJalrHXOe7+v1sYYtLrZVxzr4yOBd3/2l9qR3PVTNwTEduWXaaxr+0cbk1pWDf5aFGBKlmgiYfaA+CQ=="/>
+    </item>
+    <item>
       <title>Murmur 1.12</title>
       <pubDate>Wed, 14 Oct 2026 10:51:05 +0000</pubDate>
       <link>https://github.com/docomoz/Murmur/releases/tag/v1.12</link>
