@@ -49,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !SelfTest.isRendering, !CommandLine.arguments.contains("--playtest") else { return }
+        Analytics.start(appID: Analytics.appIDFromBundle)
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.target = self
@@ -454,6 +455,23 @@ enum SelfTest {
         if !reportIntents() { failed = true }
         reportChime()
         if !checkPomodoro() { failed = true }
+        if !checkAnalyticsWrapper() { failed = true }
+    }
+
+    /// Test modes never reach TelemetryDeck; the capture hook sees every signal, minutes rounded to 0.1.
+    @MainActor
+    private static func checkAnalyticsWrapper() -> Bool {
+        var failures: [String] = []
+        MixStore.sandboxed = true
+        Analytics.start(appID: "X")
+        if Analytics.isLive { failures.append("live in sandboxed mode") }
+        var got: [AnalyticsSignal] = []
+        Analytics.capture = { got.append($0) }
+        Analytics.send("Test.event", ["a": "b"], minutes: 1.26)
+        Analytics.capture = nil
+        if got != [AnalyticsSignal(name: "Test.event", parameters: ["a": "b"], minutes: 1.3)] { failures.append("captured \(got)") }
+        print("\nanalytics wrapper: " + (failures.isEmpty ? "ok" : "FAIL " + failures.joined(separator: "; ")))
+        return failures.isEmpty
     }
 
     /// Checks the App Intents metadata that build.sh puts into the bundle: every intent is there,
