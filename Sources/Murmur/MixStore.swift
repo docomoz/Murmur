@@ -140,6 +140,17 @@ final class MixStore: ObservableObject {
         }
     }
 
+    /// Now, for Pomodoro and listening time; tests move it by hand.
+    var clock: () -> Date = Date.init
+    /// Where the open listening session is saved; nil in the test modes unless a check sets a suite.
+    var listeningDefaults: UserDefaults? = MixStore.sandboxed ? nil : .standard
+    private var listening: ListeningSession?
+    private var listeningSaveTimer: Timer?
+    /// Why the next end of a session happens, when it isn't a plain pause or a Pomodoro break.
+    private var listeningEndReason: String?
+    private var systemAsleep = false
+    private var sleepObserver: NSObjectProtocol?
+
     private let audio = AudioEngine()
     private let defaults = UserDefaults.standard
     private var pomodoroTick: Timer?
@@ -180,7 +191,12 @@ final class MixStore: ObservableObject {
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.audio.recover() }
+            MainActor.assumeIsolated { self?.systemDidWake() }
+        }
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.systemWillSleep() }
         }
         // Test modes must not change their own output level because someone is on a call.
         if !Self.sandboxed {
@@ -223,7 +239,10 @@ final class MixStore: ObservableObject {
     func toggle(_ sound: Sound) {
         if let i = active.firstIndex(of: sound.id) {
             active.remove(at: i)
-            if active.isEmpty { isPlaying = false }
+            if active.isEmpty {
+                listeningEndReason = "stop"
+                isPlaying = false
+            }
         } else {
             active.append(sound.id)
             isPlaying = true
@@ -277,6 +296,7 @@ final class MixStore: ObservableObject {
 
     func stopAll() {
         endPomodoro()
+        listeningEndReason = "stop"
         isPlaying = false
         active = []
         sync(fade: 0.6)
@@ -338,6 +358,85 @@ final class MixStore: ObservableObject {
             let on = isPlaying && active.contains(sound.id)
             audio.setTarget(sound, gain: on ? Self.curve(volume(sound)) : 0, fade: fade)
         }
+        updateListening()
+    }
+
+    // MARK: Listening time (analytics)
+
+    /// Opens, advances or ends the listening session after any playback change.
+    private func updateListening() {
+        let now = clock()
+        let open = isPlaying && !active.isEmpty && !systemAsleep
+        let playing = open ? Set(active.filter { id in Sound.byID[id].map { volume($0) > 0 } ?? false }) : []
+        let reason = listeningEndReason ?? (pomodoroDriving ? "pomodoroBreak" : "pause")
+        listeningEndReason = nil
+        if var session = listening {
+            session.advance(to: now, playing: playing)
+            listening = session
+            if !open { endListening(reason) }
+        } else if open {
+            listening = ListeningSession(start: now, playing: playing)
+            let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.saveListening() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            listeningSaveTimer = timer
+        }
+    }
+
+    private func endListening(_ reason: String) {
+        guard let session = listening else { return }
+        listening = nil
+        listeningSaveTimer?.invalidate()
+        listeningSaveTimer = nil
+        listeningDefaults?.removeObject(forKey: Self.listeningKey)
+        for signal in session.signals(endedBy: reason) {
+            Analytics.send(signal.name, signal.parameters, minutes: signal.minutes)
+        }
+    }
+
+    private static let listeningKey = "listeningSession"
+
+    /// Saves the open session (once a minute while playing), so a crash loses at most a minute.
+    func saveListening(endedBy reason: String? = nil) {
+        guard var session = listening else { return }
+        session.advance(to: clock(), playing: Set(session.playing))
+        session.endedBy = reason
+        listening = session
+        if let data = try? JSONEncoder().encode(session) {
+            listeningDefaults?.set(data, forKey: Self.listeningKey)
+        }
+    }
+
+    /// At quit: the SDK may not get to send anything now, so the session waits for the next launch.
+    func saveListeningForQuit() {
+        saveListening(endedBy: "quit")
+        listening = nil
+        listeningSaveTimer?.invalidate()
+        listeningSaveTimer = nil
+    }
+
+    /// At launch: sends a session saved at quit (`quit`) or left behind by a crash (`recovered`).
+    func sendRecoveredListening() {
+        guard let defaults = listeningDefaults, let data = defaults.data(forKey: Self.listeningKey) else { return }
+        defaults.removeObject(forKey: Self.listeningKey)
+        guard let saved = try? JSONDecoder().decode(ListeningSession.self, from: data) else { return }
+        for signal in saved.signals(endedBy: saved.endedBy ?? "recovered") {
+            Analytics.send(signal.name, signal.parameters, minutes: signal.minutes)
+        }
+    }
+
+    /// The Mac goes to sleep: the session ends here; waking up while playing starts a new one.
+    func systemWillSleep() {
+        systemAsleep = true
+        listeningEndReason = "sleep"
+        updateListening()
+    }
+
+    func systemDidWake() {
+        systemAsleep = false
+        audio.recover()
+        updateListening()
     }
 
     private func applyMaster() {
@@ -393,7 +492,7 @@ final class MixStore: ObservableObject {
             if !Self.sandboxed { defaults.set(pomodoroPlan.id, forKey: "pomodoroPlan") }
         }
         endPomodoro()
-        pomodoro = PomodoroState(plan: pomodoroPlan, start: Date())
+        pomodoro = PomodoroState(plan: pomodoroPlan, start: clock())
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tickPomodoro() }
         }
@@ -411,7 +510,7 @@ final class MixStore: ObservableObject {
     /// Ends the current phase now: Take a Break Now / Skip Break.
     func skipPomodoroPhase() {
         guard let state = pomodoro else { return }
-        enter(state.advanced(at: Date()))
+        enter(state.advanced(at: clock()))
         tickPomodoro()
     }
 
@@ -422,9 +521,9 @@ final class MixStore: ObservableObject {
         pomodoroRemaining = nil
     }
 
-    private func tickPomodoro() {
+    func tickPomodoro() {
         guard let state = pomodoro else { return }
-        let now = Date()
+        let now = clock()
         if !state.isPaused, state.remaining(at: now) <= 0 {
             enter(state.advanced(at: now))
         }
@@ -454,7 +553,7 @@ final class MixStore: ObservableObject {
     /// (focus without sound isn't focus), playing during a break ends the break early.
     private func playbackChangedByUser() {
         guard let state = pomodoro else { return }
-        let now = Date()
+        let now = clock()
         if state.phase.isBreak {
             if isPlaying { enter(state.advanced(at: now)) }
         } else if isPlaying, state.isPaused {

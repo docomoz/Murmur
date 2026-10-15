@@ -47,9 +47,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var iconTimer: Timer?
     private var iconPhase = 0.0
 
+    func applicationWillTerminate(_ notification: Notification) {
+        store.saveListeningForQuit()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard !SelfTest.isRendering, !CommandLine.arguments.contains("--playtest") else { return }
         Analytics.start(appID: Analytics.appIDFromBundle)
+        store.sendRecoveredListening()
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.target = self
@@ -456,6 +461,104 @@ enum SelfTest {
         reportChime()
         if !checkPomodoro() { failed = true }
         if !checkAnalyticsWrapper() { failed = true }
+        if !checkListening() { failed = true }
+    }
+
+    /// Listening sessions: per-sound minutes, the 30 s floor, every way a session ends, and a session
+    /// saved at quit (or left behind by a crash) being sent on the next launch.
+    @MainActor
+    private static func checkListening() -> Bool {
+        var failures: [String] = []
+        func expect(_ ok: Bool, _ what: String) { if !ok { failures.append(what) } }
+        let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+        // Pure value: rain + café for 2 min, café off, rain 1 min more.
+        var session = ListeningSession(start: t0, playing: ["rain", "cafe"])
+        session.advance(to: t0 + 120, playing: ["rain"])
+        session.advance(to: t0 + 180, playing: ["rain"])
+        expect(session.signals(endedBy: "pause") == [
+            AnalyticsSignal(name: "Listening.ended", parameters: ["endedBy": "pause", "soundCount": "2", "sounds": "cafe,rain"], minutes: 3.0),
+            AnalyticsSignal(name: "Sound.listened", parameters: ["sound": "cafe"], minutes: 2.0),
+            AnalyticsSignal(name: "Sound.listened", parameters: ["sound": "rain"], minutes: 3.0),
+        ], "per-sound minutes: \(session.signals(endedBy: "pause"))")
+        var short = ListeningSession(start: t0, playing: ["rain"])
+        short.advance(to: t0 + 20, playing: ["rain"])
+        expect(short.signals(endedBy: "pause").isEmpty, "a 20 s session isn't sent")
+        var brief = ListeningSession(start: t0, playing: ["rain", "clock"])
+        brief.advance(to: t0 + 10, playing: ["rain"])
+        brief.advance(to: t0 + 300, playing: ["rain"])
+        let briefSignals = brief.signals(endedBy: "pause")
+        expect(briefSignals.first?.parameters["sounds"] == "rain" && !briefSignals.contains { $0.parameters["sound"] == "clock" },
+               "a sound under 30 s isn't counted: \(briefSignals)")
+
+        // The store, on a controllable clock.
+        MixStore.sandboxed = true
+        let suite = "app.murmur.selftest"
+        UserDefaults().removePersistentDomain(forName: suite)
+        var now = t0
+        var got: [AnalyticsSignal] = []
+        Analytics.capture = { got.append($0) }
+        func makeStore() -> MixStore {
+            let store = MixStore()
+            store.cuesEnabled = false
+            store.setMaster(0)
+            store.clock = { now }
+            store.listeningDefaults = UserDefaults(suiteName: suite)
+            return store
+        }
+        func ended() -> [AnalyticsSignal] { got.filter { $0.name == "Listening.ended" } }
+        let mix = Mix(id: "t", name: "", emoji: "", levels: ["rain": 0.4, "cafe": 0.5])
+        let store = makeStore()
+
+        store.apply(mix); got = []
+        now += 90; store.pause()
+        expect(ended().map(\.parameters["endedBy"]) == ["pause"] && ended().first?.minutes == 1.5, "pause: \(ended())")
+        expect(got.filter { $0.name == "Sound.listened" }.count == 2, "a Sound.listened per sound")
+
+        store.play(); got = []
+        now += 60; store.stopAll()
+        expect(ended().map(\.parameters["endedBy"]) == ["stop"], "stop: \(ended())")
+
+        store.apply(mix); got = []
+        now += 60; store.systemWillSleep()
+        now += 60; store.systemDidWake()
+        now += 60; store.pause()
+        expect(ended().map(\.parameters["endedBy"]) == ["sleep", "pause"] && ended().map(\.minutes) == [1.0, 1.0],
+               "sleep splits the session: \(ended())")
+
+        store.stopAll(); got = []
+        store.apply(mix)
+        store.startPomodoro(minutes: 1)
+        now += 61; store.tickPomodoro()
+        expect(ended().map(\.parameters["endedBy"]) == ["pomodoroBreak"], "a break ends the session: \(ended())")
+        store.skipPomodoroPhase(); got = []
+        now += 60; store.pause()
+        expect(ended().map(\.parameters["endedBy"]) == ["pause"] && ended().first?.minutes == 1.0, "focus after the break is a new session: \(ended())")
+        store.stopAll()
+
+        // Quit while playing: saved, sent by the next launch, then forgotten.
+        store.apply(mix); got = []
+        now += 120; store.saveListeningForQuit()
+        expect(ended().isEmpty, "nothing sent at quit")
+        let next = makeStore()
+        next.sendRecoveredListening()
+        expect(ended().map(\.parameters["endedBy"]) == ["quit"] && ended().first?.minutes == 2.0, "quit is sent on next launch: \(ended())")
+        got = []
+        next.sendRecoveredListening()
+        expect(ended().isEmpty, "a recovered session is sent once")
+
+        // A crash leaves the minute save behind, without endedBy.
+        let crashed = makeStore()
+        crashed.apply(mix)
+        now += 65; crashed.saveListening()
+        got = []
+        makeStore().sendRecoveredListening()
+        expect(ended().map(\.parameters["endedBy"]) == ["recovered"] && ended().first?.minutes == 1.1, "crash is recovered: \(ended())")
+
+        Analytics.capture = nil
+        UserDefaults().removePersistentDomain(forName: suite)
+        print("listening: " + (failures.isEmpty ? "ok" : "FAIL " + failures.joined(separator: "; ")))
+        return failures.isEmpty
     }
 
     /// Test modes never reach TelemetryDeck; the capture hook sees every signal, minutes rounded to 0.1.
